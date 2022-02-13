@@ -86,7 +86,7 @@ impl Display for Elf64ProgramHeader {
         f.write_str("|")?;
         f.write_str(format!("Type: {}", segment_type.get(&self.p_type).unwrap_or(&"Other")).as_str())?;
         f.write_str(format!("|Offset: {}", self.p_offset).as_str())?;
-        f.write_str(format!("|Virtual Address: {:#X}", self.p_offset).as_str())?;
+        f.write_str(format!("|Virtual Address: {:#X}", self.p_virtual_address).as_str())?;
         f.write_str(format!("|File Size: {}", self.p_file_size).as_str())?;
         f.write_str(format!("|Memory Size: {}", self.p_memory_size).as_str())?;
         f.write_str("|\n")
