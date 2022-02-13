@@ -1,8 +1,10 @@
-use std::{env, mem};
+mod syscall;
+
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::{env, mem};
 
 const IDENT_SIZE: usize = 16;
 
@@ -20,7 +22,7 @@ struct Elf64Header {
     e_program_header_entry_size: u16,
     e_program_header_entries: u16,
     e_section_header_entry_size: u16,
-    e_section_header_entries: u16
+    e_section_header_entries: u16,
 }
 
 #[repr(C)]
@@ -31,7 +33,7 @@ struct Elf64ProgramHeader {
     p_physical_address: u64,
     p_file_size: u64,
     p_memory_size: u64,
-    p_align: u64
+    p_align: u64,
 }
 
 #[repr(C)]
@@ -45,7 +47,7 @@ struct Elf64SectionHeader {
     sh_link: u32,
     sh_info: u32,
     sh_address_align: u64,
-    sh_entry_size: u64
+    sh_entry_size: u64,
 }
 
 impl Display for Elf64SectionHeader {
@@ -62,10 +64,19 @@ impl Display for Elf64SectionHeader {
             (8, "Uninitialized space"),
             (9, "'Rel' type allocation entries"),
             (10, "Reserved"),
-            (11, "Dynamic loader symbol table")
-        ].iter().cloned().collect();
+            (11, "Dynamic loader symbol table"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
         f.write_str("|")?;
-        f.write_str(format!("Type: {}", section_type.get(&self.sh_type).unwrap_or(&"Other")).as_str())?;
+        f.write_str(
+            format!(
+                "Type: {}",
+                section_type.get(&self.sh_type).unwrap_or(&"Other")
+            )
+            .as_str(),
+        )?;
         f.write_str(format!("|Virtual Address: {:#X}", self.sh_virtual_address).as_str())?;
         f.write_str(format!("|Offset: {}", self.sh_offset).as_str())?;
         f.write_str("|\n")
@@ -81,10 +92,19 @@ impl Display for Elf64ProgramHeader {
             (3, "Program interpreter path"),
             (4, "Note sections"),
             (5, "Reserved"),
-            (6, "Program Header Table")
-        ].iter().cloned().collect();
+            (6, "Program Header Table"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
         f.write_str("|")?;
-        f.write_str(format!("Type: {}", segment_type.get(&self.p_type).unwrap_or(&"Other")).as_str())?;
+        f.write_str(
+            format!(
+                "Type: {}",
+                segment_type.get(&self.p_type).unwrap_or(&"Other")
+            )
+            .as_str(),
+        )?;
         f.write_str(format!("|Offset: {}", self.p_offset).as_str())?;
         f.write_str(format!("|Virtual Address: {:#X}", self.p_virtual_address).as_str())?;
         f.write_str(format!("|File Size: {}", self.p_file_size).as_str())?;
@@ -100,8 +120,11 @@ impl Display for Elf64Header {
             (1, "Relocatable file"),
             (2, "Executable file"),
             (3, "Shared object type"),
-            (4, "Core file")
-        ].iter().cloned().collect();
+            (4, "Core file"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
         let mut magic = String::new();
         for x in 0..IDENT_SIZE {
             if x == 0 {
@@ -111,14 +134,44 @@ impl Display for Elf64Header {
             }
         }
         f.write_str(format!("Magic: {}\n", magic).as_str())?;
-        f.write_str(format!("File type: {}\n", elf_type.get(&self.e_type).unwrap_or(&"Other")).as_str())?;
+        f.write_str(
+            format!(
+                "File type: {}\n",
+                elf_type.get(&self.e_type).unwrap_or(&"Other")
+            )
+            .as_str(),
+        )?;
         f.write_str(format!("Machine: {:#02X}\n", self.e_machine).as_str())?;
         f.write_str(format!("Version: {:#02X}\n", self.e_version).as_str())?;
         f.write_str(format!("Entry point address: {:#X}\n", self.e_entry).as_str())?;
-        f.write_str(format!("Program header table offset: {}\n", self.e_program_header_offset).as_str())?;
-        f.write_str(format!("Section header table offset: {}\n", self.e_section_header_offset).as_str())?;
-        f.write_str(format!("Program header entries: {}\n", self.e_program_header_entries).as_str())?;
-        f.write_str(format!("Section header entries: {}\n", self.e_section_header_entries).as_str())
+        f.write_str(
+            format!(
+                "Program header table offset: {}\n",
+                self.e_program_header_offset
+            )
+            .as_str(),
+        )?;
+        f.write_str(
+            format!(
+                "Section header table offset: {}\n",
+                self.e_section_header_offset
+            )
+            .as_str(),
+        )?;
+        f.write_str(
+            format!(
+                "Program header entries: {}\n",
+                self.e_program_header_entries
+            )
+            .as_str(),
+        )?;
+        f.write_str(
+            format!(
+                "Section header entries: {}\n",
+                self.e_section_header_entries
+            )
+            .as_str(),
+        )
     }
 }
 
@@ -128,7 +181,10 @@ fn check_file_ident(header: &Elf64Header) -> Result<(), String> {
         println!("ELF file detected");
         Ok(())
     } else {
-        Result::Err(format!("Not an ELF file. {:#02X} {:#02X} {:#02X} {:#02X}", mag[0], mag[1], mag[2], mag[3]))
+        Result::Err(format!(
+            "Not an ELF file. {:#02X} {:#02X} {:#02X} {:#02X}",
+            mag[0], mag[1], mag[2], mag[3]
+        ))
     }
 }
 
@@ -168,16 +224,22 @@ fn check_header(header: &Elf64Header) -> Result<(), String> {
     check_machine(header)
 }
 
-fn load_program_headers<T: Read + Seek>(header: &Elf64Header, reader: &mut T) -> Vec<Elf64ProgramHeader> {
-    reader.seek(SeekFrom::Start(header.e_program_header_offset)).expect("Unable to change position");
+fn load_program_headers<T: Read + Seek>(
+    header: &Elf64Header,
+    reader: &mut T,
+) -> Vec<Elf64ProgramHeader> {
+    reader
+        .seek(SeekFrom::Start(header.e_program_header_offset))
+        .expect("Unable to change position");
     let mut program_headers: Vec<Elf64ProgramHeader> = Vec::new();
     for _ in 0..header.e_program_header_entries {
         let mut program_header_buffer: Vec<u8> = Vec::new();
         program_header_buffer.resize(mem::size_of::<Elf64ProgramHeader>(), 0);
-        reader.read_exact(&mut program_header_buffer).expect("Read error");
-        let program_header: Elf64ProgramHeader = unsafe {
-            std::ptr::read_unaligned(program_header_buffer.as_ptr() as *const _)
-        };
+        reader
+            .read_exact(&mut program_header_buffer)
+            .expect("Read error");
+        let program_header: Elf64ProgramHeader =
+            unsafe { std::ptr::read_unaligned(program_header_buffer.as_ptr() as *const _) };
         program_headers.push(program_header);
     }
     program_headers
@@ -187,22 +249,25 @@ fn load_elf_header<T: Read>(reader: &mut T) -> Elf64Header {
     let mut header_buffer: Vec<u8> = Vec::new();
     header_buffer.resize(mem::size_of::<Elf64Header>(), 0);
     reader.read_exact(&mut header_buffer).expect("Read error");
-    let header: Elf64Header = unsafe {
-        std::ptr::read_unaligned(header_buffer.as_ptr() as *const _)
-    };
+    let header: Elf64Header =
+        unsafe { std::ptr::read_unaligned(header_buffer.as_ptr() as *const _) };
     header
 }
 
-fn load_section_headers<T: Read + Seek>(header: &Elf64Header, reader: &mut T) -> Vec<Elf64SectionHeader> {
-    reader.seek(SeekFrom::Start(header.e_section_header_offset)).expect("Unable to change position");
+fn load_section_headers<T: Read + Seek>(
+    header: &Elf64Header,
+    reader: &mut T,
+) -> Vec<Elf64SectionHeader> {
+    reader
+        .seek(SeekFrom::Start(header.e_section_header_offset))
+        .expect("Unable to change position");
     let mut section_headers: Vec<Elf64SectionHeader> = Vec::new();
     for _ in 0..header.e_section_header_entries {
         let mut buffer: Vec<u8> = Vec::new();
         buffer.resize(mem::size_of::<Elf64SectionHeader>(), 0);
         reader.read_exact(&mut buffer).expect("Read error");
-        let section_header: Elf64SectionHeader = unsafe {
-            std::ptr::read_unaligned(buffer.as_ptr() as *const _)
-        };
+        let section_header: Elf64SectionHeader =
+            unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const _) };
         section_headers.push(section_header);
     }
     section_headers
@@ -229,5 +294,12 @@ fn main() {
     println!("Section headers");
     for header in section_headers.iter() {
         println!("{}", header);
+    }
+    let fd = unsafe {
+        syscall::open(file_path.as_str().as_ptr() as *const libc::c_char, 0, 0)
+    };
+    println!("Fd: {}", fd);
+    unsafe {
+        syscall::close(fd);
     }
 }
