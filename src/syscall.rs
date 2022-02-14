@@ -8,15 +8,9 @@ extern "C" {
         offset: libc::off_t,
     ) -> *const libc::c_void;
 
-    pub fn open(
-        pathname: *const libc::c_char,
-        flags: i32,
-        mode: libc::mode_t
-    ) -> i32;
+    pub fn open(pathname: *const libc::c_char, flags: i32, mode: libc::mode_t) -> i32;
 
-    pub fn close(
-        file_descriptor: i32
-    ) -> i32;
+    pub fn close(file_descriptor: i32) -> i32;
 
     pub fn clone(
         entry: *const libc::c_void,
@@ -25,6 +19,6 @@ extern "C" {
         arg: *const libc::c_void,
         parent_thread_identifier: *const libc::pid_t,
         thread_local_storage: *const libc::c_void,
-        child_thread_identifier: *const libc::c_void
+        child_thread_identifier: *const libc::c_void,
     ) -> i32;
 }

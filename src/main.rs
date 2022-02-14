@@ -23,6 +23,7 @@ struct Elf64Header {
     e_program_header_entries: u16,
     e_section_header_entry_size: u16,
     e_section_header_entries: u16,
+    e_section_name_string_table_index: u16,
 }
 
 #[repr(C)]
@@ -35,6 +36,9 @@ struct Elf64ProgramHeader {
     p_memory_size: u64,
     p_align: u64,
 }
+
+const ELF64_SECTION_HEADER_UNUSED: u32 = 0;
+const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
 
 #[repr(C)]
 struct Elf64SectionHeader {
@@ -77,6 +81,7 @@ impl Display for Elf64SectionHeader {
             )
             .as_str(),
         )?;
+        f.write_str(format!("|Name Index: {}", self.sh_name).as_str())?;
         f.write_str(format!("|Virtual Address: {:#X}", self.sh_virtual_address).as_str())?;
         f.write_str(format!("|Offset: {}", self.sh_offset).as_str())?;
         f.write_str("|\n")
@@ -171,6 +176,13 @@ impl Display for Elf64Header {
                 self.e_section_header_entries
             )
             .as_str(),
+        )?;
+        f.write_str(
+            format!(
+                "Section name string table: {}\n",
+                self.e_section_name_string_table_index
+            )
+            .as_str(),
         )
     }
 }
@@ -224,6 +236,40 @@ fn check_header(header: &Elf64Header) -> Result<(), String> {
     check_machine(header)
 }
 
+fn get_string_tables_content<T: Read + Seek>(
+    section_headers: &Vec<Elf64SectionHeader>,
+    reader: &mut T,
+) -> HashMap<u64, Vec<u8>> {
+    let mut result = HashMap::new();
+    let string_table_headers = section_headers
+        .iter()
+        .filter(|t| t.sh_type == ELF64_SECTION_HEADER_STRING_TABLE);
+    for entry in string_table_headers {
+        let mut buffer: Vec<u8> = Vec::new();
+        buffer.resize(entry.sh_size as usize, 0);
+        reader
+            .seek(SeekFrom::Start(entry.sh_offset))
+            .expect("Unable to change position");
+        reader
+            .read_exact(&mut buffer)
+            .expect("Unable to read string table content");
+        result.insert(entry.sh_offset, buffer);
+    }
+    result
+}
+
+fn convert_string_tables_content(string_tables: &HashMap<u64, Vec<u8>>) -> HashMap<u64, Vec<&str>> {
+    let mut result = HashMap::new();
+    for (key, value) in string_tables.iter() {
+        let mut strings = Vec::new();
+        for part in value.split(|x| *x == 0) {
+            strings.push(std::str::from_utf8(part).unwrap());
+        }
+        result.insert(*key, strings);
+    }
+    result
+}
+
 fn load_program_headers<T: Read + Seek>(
     header: &Elf64Header,
     reader: &mut T,
@@ -273,6 +319,14 @@ fn load_section_headers<T: Read + Seek>(
     section_headers
 }
 
+fn string_length(string: &[u8]) -> usize {
+    let mut index = 0;
+    while string[index] != 0 {
+        index += 1;
+    }
+    return index + 1;
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -291,15 +345,24 @@ fn main() {
         println!("{}", header);
     }
     let section_headers = load_section_headers(&header, &mut reader);
-    println!("Section headers");
-    for header in section_headers.iter() {
-        println!("{}", header);
+    let string_tables_content = get_string_tables_content(&section_headers, &mut reader);
+    let string_tables_content_converted = convert_string_tables_content(&string_tables_content);
+    for (key, value) in string_tables_content_converted.iter() {
+        println!("String table at {} content:", key);
+        for entry in value.iter() {
+            println!("{}", entry);
+        }
     }
-    let fd = unsafe {
-        syscall::open(file_path.as_str().as_ptr() as *const libc::c_char, 0, 0)
-    };
-    println!("Fd: {}", fd);
-    unsafe {
-        syscall::close(fd);
+    println!("Section headers");
+    let section_names = section_headers
+        .get(header.e_section_name_string_table_index as usize)
+        .unwrap();
+    let section_names_table = string_tables_content.get(&section_names.sh_offset).unwrap();
+    for header in section_headers.iter() {
+        let idx = header.sh_name as usize;
+        let length = string_length(&section_names_table[idx..]);
+        let end_idx = idx + length;
+        let name = std::str::from_utf8(&section_names_table[idx..end_idx]).unwrap();
+        println!("Section name: {}, header: {}", name, header);
     }
 }
