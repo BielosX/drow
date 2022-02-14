@@ -8,7 +8,9 @@ extern "C" {
         offset: libc::off_t,
     ) -> *const libc::c_void;
 
-    pub fn open(pathname: *const libc::c_char, flags: i32, mode: libc::mode_t) -> i32;
+    pub fn munmap(address: *const libc::c_void, length: libc::size_t) -> i32;
+
+    pub fn open(pathname: *const libc::c_char, flags: i32) -> i32;
 
     pub fn close(file_descriptor: i32) -> i32;
 
@@ -21,4 +23,6 @@ extern "C" {
         thread_local_storage: *const libc::c_void,
         child_thread_identifier: *const libc::c_void,
     ) -> i32;
+
+    pub fn wait(status: *const i32);
 }
