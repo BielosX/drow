@@ -5,7 +5,7 @@
 _start:
     movq $1, %rax
     movq $1, %rdi
-    lea msg(%rip), %rsi # it's not (msg + $rip), it's msg relative to %rip, quite confusing.
+    lea msg(%rip), %rsi # it's not (msg + $rip), it's msg relative to %rip, assembler will count the difference (msg - next_instruction_addr).
     movq $STR_LEN, %rdx
     syscall
 
