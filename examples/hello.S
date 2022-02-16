@@ -5,7 +5,7 @@
 _start:
     movq $1, %rax
     movq $1, %rdi
-    movq $msg, %rsi
+    lea msg(%rip), %rsi
     movq $STR_LEN, %rdx
     syscall
 

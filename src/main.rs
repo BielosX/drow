@@ -414,8 +414,9 @@ fn main() {
         .into_iter()
         .filter(|h| h.sh_type == 1)
         .collect();
+    let offset = 0x20000;
     for info in program_info {
-        let virtual_ptr = info.sh_virtual_address as *const libc::c_void;
+        let virtual_ptr = (info.sh_virtual_address + offset) as *const libc::c_void;
         let ptr: *const libc::c_void = unsafe {
             syscall::mmap(
                 virtual_ptr,
@@ -438,7 +439,7 @@ fn main() {
     let stack = ProgramStack::allocate(4096).unwrap();
     let pid = unsafe {
         syscall::clone(
-            header.e_entry as *const libc::c_void,
+            (header.e_entry + offset) as *const libc::c_void,
             stack.last_address,
             libc::CLONE_FILES | libc::CLONE_VM,
             0 as *const libc::c_void,
