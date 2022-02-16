@@ -1,5 +1,5 @@
 hello:
-	as -o hello.o hello.S
+	nasm -o hello.o -f elf64 hello.asm
 	ld -o hello hello.o
 
 clean:
