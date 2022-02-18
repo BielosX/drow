@@ -1,5 +1,6 @@
 use libc::perror;
-use crate::{Elf64Metadata, Elf64SectionHeader, syscall};
+
+use crate::{syscall, Elf64Metadata, Elf64SectionHeader};
 
 struct ProgramStack {
     address: *const libc::c_void,
@@ -38,7 +39,7 @@ impl ProgramStack {
 
 pub struct Elf64Loader {
     sections_virtual_addresses: Vec<*const libc::c_void>,
-    stack: ProgramStack
+    stack: ProgramStack,
 }
 
 impl Elf64Loader {
@@ -52,7 +53,8 @@ impl Elf64Loader {
             println!("File descriptor: {}", file_descriptor);
         }
         let mut virtual_address: Vec<*const libc::c_void> = Vec::new();
-        let program_info = elf_metadata.section_headers
+        let program_info = elf_metadata
+            .section_headers
             .iter()
             .filter(|h| h.sh_virtual_address != 0);
         let offset = 0x20000;
@@ -95,7 +97,7 @@ impl Elf64Loader {
         }
         Elf64Loader {
             stack,
-            sections_virtual_addresses: virtual_address
+            sections_virtual_addresses: virtual_address,
         }
     }
 }

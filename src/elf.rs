@@ -255,7 +255,9 @@ impl Elf64Metadata {
         header: &Elf64Header,
         reader: &mut T,
     ) -> Result<Vec<Elf64ProgramHeader>, String> {
-        reader.seek(SeekFrom::Start(header.e_program_header_offset)).map_err(|err| format!("Unable to read file: {:?}", err))?;
+        reader
+            .seek(SeekFrom::Start(header.e_program_header_offset))
+            .map_err(|err| format!("Unable to read file: {:?}", err))?;
         let mut program_headers: Vec<Elf64ProgramHeader> = Vec::new();
         for _ in 0..header.e_program_header_entries {
             let mut program_header_buffer: Vec<u8> = Vec::new();
@@ -299,7 +301,7 @@ impl Elf64Metadata {
         let result = Elf64Metadata {
             elf_header,
             program_headers,
-            section_headers
+            section_headers,
         };
         Result::Ok(result)
     }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
-use crate::{ELF64_SECTION_HEADER_STRING_TABLE, Elf64Metadata, Elf64SectionHeader};
+
+use crate::{Elf64Metadata, Elf64SectionHeader, ELF64_SECTION_HEADER_STRING_TABLE};
 
 fn get_string_tables_content<T: Read + Seek>(
     section_headers: &Vec<Elf64SectionHeader>,
@@ -59,7 +60,8 @@ pub fn print<T: Read + Seek>(elf_metadata: &Elf64Metadata, reader: &mut T) {
         }
     }
     println!("Section headers");
-    let section_names = elf_metadata.section_headers
+    let section_names = elf_metadata
+        .section_headers
         .get(elf_metadata.elf_header.e_section_name_string_table_index as usize)
         .unwrap();
     let section_names_table = string_tables_content.get(&section_names.sh_offset).unwrap();

@@ -1,16 +1,18 @@
-mod elf;
-mod syscall;
-mod loader;
-mod printer;
-
-use libc::{c_char, perror};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::{env, mem};
+
+use libc::{c_char, perror};
+
 use crate::elf::*;
 use crate::loader::Elf64Loader;
+
+mod elf;
+mod loader;
+mod printer;
+mod syscall;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
