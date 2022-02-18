@@ -1,11 +1,6 @@
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::env;
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::{env, mem};
-
-use libc::{c_char, perror};
-
+use std::io::BufReader;
 use crate::elf::*;
 use crate::loader::Elf64Loader;
 
