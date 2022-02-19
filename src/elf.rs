@@ -36,6 +36,7 @@ pub struct Elf64ProgramHeader {
 
 pub const ELF64_SECTION_HEADER_UNUSED: u32 = 0;
 pub const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
+pub const ELF64_SECTION_HEADER_DYNAMIC: u32 = 6;
 
 #[repr(C)]
 pub struct Elf64SectionHeader {

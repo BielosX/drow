@@ -1,12 +1,15 @@
+use crate::dynamic::Elf64Dynamic;
+use crate::elf::*;
+use crate::loader::Elf64Loader;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
-use crate::elf::*;
-use crate::loader::Elf64Loader;
 
+mod dynamic;
 mod elf;
 mod loader;
 mod printer;
+mod string_tables;
 mod syscall;
 
 fn main() {
@@ -20,5 +23,9 @@ fn main() {
     let mut reader = BufReader::new(elf_file);
     let elf_metadata: Elf64Metadata = Elf64Metadata::load(&mut reader).unwrap();
     printer::print(&elf_metadata, &mut reader);
-    Elf64Loader::load(file_path, &elf_metadata);
+    let dynamic = Elf64Dynamic::load(&elf_metadata, &mut reader).unwrap();
+    for library in dynamic.required_libraries {
+        println!("Required library: {}", library);
+    }
+    //Elf64Loader::load(file_path, &elf_metadata);
 }
