@@ -34,9 +34,13 @@ fn main() {
     let elf_metadata: Elf64Metadata = Elf64Metadata::load(&mut reader).unwrap();
     printer::print(&elf_metadata, &mut reader);
     let dynamic = Elf64Dynamic::load(&elf_metadata, &mut reader).unwrap();
+    let library_cache = LibraryCache::load(&CACHE_PATH.to_string()).unwrap();
     for library in dynamic.required_libraries {
-        println!("Required library: {}", library);
+        if let Some(absolute_path) = library_cache.find(&library) {
+            println!("Required library: {} => {}", library, absolute_path);
+        } else {
+            println!("Required library: {}", library);
+        }
     }
     //Elf64Loader::load(file_path, &elf_metadata);
-    LibraryCache::load(&CACHE_PATH.to_string()).unwrap();
 }
