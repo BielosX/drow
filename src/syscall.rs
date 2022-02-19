@@ -25,4 +25,6 @@ extern "C" {
     ) -> i32;
 
     pub fn wait(status: *const i32);
+
+    pub fn fstat(file_descriptor: i32, result: *const libc::stat) -> i32;
 }
