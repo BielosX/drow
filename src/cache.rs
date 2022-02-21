@@ -1,8 +1,8 @@
 use crate::syscall;
 use libc::{size_t, stat};
 use std::collections::HashMap;
-use std::{mem, ptr};
 use std::mem::size_of;
+use std::{mem, ptr};
 
 pub struct LibraryCache {
     cache: HashMap<String, String>,
@@ -18,7 +18,7 @@ struct CacheEntry {
     key: u32,
     value: u32,
     os_version: u32,
-    hwcap: u64
+    hwcap: u64,
 }
 
 impl LibraryCache {
@@ -110,7 +110,7 @@ impl LibraryCache {
                     println!("String table size: {}", string_table_size);
                     let mut cache_entries: Vec<CacheEntry> = Vec::new();
                     for _ in 0..number_of_entries {
-                        let entry: CacheEntry = ptr::read_unaligned(elem_ptr as * const _);
+                        let entry: CacheEntry = ptr::read_unaligned(elem_ptr as *const _);
                         cache_entries.push(entry.clone());
                         elem_ptr = elem_ptr.offset(size_of::<CacheEntry>() as isize);
                     }
@@ -120,7 +120,8 @@ impl LibraryCache {
                         let key_string_pointer = file_ptr.offset(entry.key as isize);
                         let value_string_pointer = file_ptr.offset(entry.value as isize);
                         let key = LibraryCache::pointer_to_string(key_string_pointer as *const u8);
-                        let value = LibraryCache::pointer_to_string(value_string_pointer as *const u8);
+                        let value =
+                            LibraryCache::pointer_to_string(value_string_pointer as *const u8);
                         library_cache.cache.insert(key, value);
                     }
                     syscall::munmap(file_ptr, file_size as size_t);

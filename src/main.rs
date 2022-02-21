@@ -42,5 +42,8 @@ fn main() {
             println!("Required library: {}", library);
         }
     }
+    for symbol in elf_metadata.symbol_table {
+        println!("{}", symbol);
+    }
     //Elf64Loader::load(file_path, &elf_metadata);
 }
