@@ -45,5 +45,9 @@ fn main() {
     for symbol in elf_metadata.symbol_table {
         println!("{}", symbol);
     }
+    println!("Dynamic symbol table:");
+    for symbol in elf_metadata.dynamic_symbol_table {
+        println!("{}", symbol);
+    }
     //Elf64Loader::load(file_path, &elf_metadata);
 }

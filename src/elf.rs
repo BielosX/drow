@@ -41,6 +41,7 @@ pub const ELF64_SECTION_HEADER_UNUSED: u32 = 0;
 pub const ELF64_SECTION_HEADER_SYMBOL_TABLE: u32 = 2;
 pub const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
 pub const ELF64_SECTION_HEADER_DYNAMIC: u32 = 6;
+pub const ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE: u32 = 11;
 
 #[repr(C)]
 pub struct Elf64SectionHeader {
@@ -73,6 +74,10 @@ const SYMBOL_TYPE_BINDING_LOOS: u8 = 10;
 const SYMBOL_TYPE_BINDING_HIOS: u8 = 12;
 const SYMBOL_TYPE_BINDING_LOPROC: u8 = 13;
 const SYMBOL_TYPE_BINDING_HIPROC: u8 = 15;
+
+const SHN_UNDEF: u16 = 0;
+const SHN_ABSOLUTE: u16 = 0xfff1;
+const SHN_COMMON: u16 = 0xfff2;
 
 impl Elf64SymbolTableEntry {
     pub fn binding(&self) -> u8 {
@@ -124,6 +129,16 @@ impl Display for Elf64ResolvedSymbolTableEntry {
             )
             .as_str(),
         );
+        f.write_str(format!("| Value: {:X}", self.value).as_str())?;
+        if self.section_index == SHN_UNDEF {
+            f.write_str("| Section Index: UNDEFINED")?;
+        }
+        if self.section_index == SHN_ABSOLUTE {
+            f.write_str("| Section Index: ABSOLUTE")?;
+        }
+        if self.section_index == SHN_COMMON {
+            f.write_str("| Section Index: COMMON")?;
+        }
         f.write_str(" |")
     }
 }
@@ -269,6 +284,7 @@ pub struct Elf64Metadata {
     pub program_headers: Vec<Elf64ProgramHeader>,
     pub section_headers: Vec<Elf64SectionHeader>,
     pub symbol_table: Vec<Elf64ResolvedSymbolTableEntry>,
+    pub dynamic_symbol_table: Vec<Elf64ResolvedSymbolTableEntry>
 }
 
 impl Elf64Metadata {
@@ -377,14 +393,17 @@ impl Elf64Metadata {
     fn load_symbol_table<T: Read + Seek>(
         section_headers: &Vec<Elf64SectionHeader>,
         reader: &mut T,
+        table_type: u32,
     ) -> Result<Vec<Elf64ResolvedSymbolTableEntry>, String> {
         let mut result: Vec<Elf64ResolvedSymbolTableEntry> = Vec::new();
         for table in section_headers
             .iter()
-            .filter(|header| header.sh_type == ELF64_SECTION_HEADER_SYMBOL_TABLE)
+            .filter(|header| header.sh_type == table_type)
         {
-            let section_string_table =
-                get_string_table_content(&section_headers.get(table.sh_link as usize).unwrap(), reader);
+            let section_string_table = get_string_table_content(
+                &section_headers.get(table.sh_link as usize).unwrap(),
+                reader,
+            );
             reader.seek(SeekFrom::Start(table.sh_offset));
             let entries = table.sh_size / size_of::<Elf64SymbolTableEntry>() as u64;
             for _ in 0..entries {
@@ -398,10 +417,9 @@ impl Elf64Metadata {
                 let len = string_length(&section_string_table[section_entry.st_name as usize..]);
                 let from = section_entry.st_name as usize;
                 let to = from + len;
-                let symbol_name =
-                    std::str::from_utf8(&section_string_table[from..to])
-                        .unwrap()
-                        .to_string();
+                let symbol_name = std::str::from_utf8(&section_string_table[from..to])
+                    .unwrap()
+                    .to_string();
                 let resolved_entry = Elf64ResolvedSymbolTableEntry {
                     symbol_name,
                     binding: section_entry.binding(),
@@ -421,12 +439,22 @@ impl Elf64Metadata {
         Elf64Metadata::check_header(&elf_header)?;
         let program_headers = Elf64Metadata::load_program_headers(&elf_header, reader)?;
         let section_headers = Elf64Metadata::load_section_headers(&elf_header, reader)?;
-        let symbol_table = Elf64Metadata::load_symbol_table(&section_headers, reader)?;
+        let symbol_table = Elf64Metadata::load_symbol_table(
+            &section_headers,
+            reader,
+            ELF64_SECTION_HEADER_SYMBOL_TABLE,
+        )?;
+        let dynamic_symbol_table = Elf64Metadata::load_symbol_table(
+            &section_headers,
+            reader,
+            ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE,
+        )?;
         let result = Elf64Metadata {
             elf_header,
             program_headers,
             section_headers,
             symbol_table,
+            dynamic_symbol_table
         };
         Result::Ok(result)
     }
