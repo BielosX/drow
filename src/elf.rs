@@ -99,6 +99,7 @@ pub struct Elf64ResolvedSymbolTableEntry {
     pub size: u64,
 }
 
+#[repr(C)]
 pub struct Elf64RelocationAddend {
     pub offset: u64,
     pub info: u64,
