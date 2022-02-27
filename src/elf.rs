@@ -3,8 +3,8 @@ use libc::wchar_t;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{Read, Seek, SeekFrom};
-use std::mem;
 use std::mem::size_of;
+use std::{iter, mem};
 
 const IDENT_SIZE: usize = 16;
 
@@ -40,6 +40,7 @@ pub struct Elf64ProgramHeader {
 pub const ELF64_SECTION_HEADER_UNUSED: u32 = 0;
 pub const ELF64_SECTION_HEADER_SYMBOL_TABLE: u32 = 2;
 pub const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
+pub const ELF64_SECTION_HEADER_RELOCATION_ADDEND: u32 = 4;
 pub const ELF64_SECTION_HEADER_DYNAMIC: u32 = 6;
 pub const ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE: u32 = 11;
 
@@ -96,6 +97,107 @@ pub struct Elf64ResolvedSymbolTableEntry {
     pub section_index: u16,
     pub value: u64,
     pub size: u64,
+}
+
+pub struct Elf64RelocationAddend {
+    pub offset: u64,
+    pub info: u64,
+    pub addend: i32,
+}
+
+impl Elf64RelocationAddend {
+    fn symbol_table_index(&self) -> u64 {
+        self.info >> 32
+    }
+
+    fn relocation_type(&self) -> u64 {
+        self.info & 0xFFFFFFFF
+    }
+}
+
+const RELOCATION_X86_64_NONE: u64 = 0;
+const RELOCATION_X86_64_64: u64 = 1;
+const RELOCATION_X86_64_PC32: u64 = 2;
+const RELOCATION_X86_64_GOT32: u64 = 3;
+const RELOCATION_X86_64_PLT32: u64 = 4;
+const RELOCATION_X86_64_COPY: u64 = 5;
+const RELOCATION_X86_64_GLOB_DAT: u64 = 6;
+const RELOCATION_X86_64_JUMP_SLOT: u64 = 7;
+const RELOCATION_X86_64_RELATIVE: u64 = 8;
+const RELOCATION_X86_64_GOTPCREL: u64 = 9;
+const RELOCATION_X86_64_32: u64 = 10;
+const RELOCATION_X86_64_32S: u64 = 11;
+const RELOCATION_X86_64_16: u64 = 12;
+const RELOCATION_X86_64_PC16: u64 = 13;
+const RELOCATION_X86_64_8: u64 = 14;
+const RELOCATION_X86_64_PC8: u64 = 15;
+const RELOCATION_X86_64_DPTMOD64: u64 = 16;
+const RELOCATION_X86_64_DTPOFF64: u64 = 17;
+const RELOCATION_X86_64_TLSGD: u64 = 19;
+const RELOCATION_X86_64_TLSLD: u64 = 20;
+const RELOCATION_X86_64_DTPOFF32: u64 = 21;
+const RELOCATION_X86_64_GOTTPOFF: u64 = 22;
+const RELOCATION_X86_64_TPOFF32: u64 = 23;
+const RELOCATION_X86_64_PC64: u64 = 24;
+const RELOCATION_X86_64_GOTOFF64: u64 = 25;
+const RELOCATION_X86_64_GOTOPC32: u64 = 26;
+
+pub struct Elf64ResolvedRelocationAddend {
+    pub symbol_name: String,
+    pub symbol_index: u64,
+    pub relocation_type: u64,
+    pub offset: u64,
+    pub addend: i32,
+}
+
+impl Display for Elf64ResolvedRelocationAddend {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let relocation_types = [
+            "R_X86_64_NONE",
+            "R_X86_64_64",
+            "R_X86_64_PC3",
+            "R_X86_64_GOT32",
+            "R_X86_64_PLT32",
+            "R_X86_64_COPY",
+            "R_X86_64_GLOB_DAT",
+            "R_X86_64_JUMP_SLOT",
+            "R_X86_64_RELATIVE",
+            "R_X86_64_GOTPCREL",
+            "R_X86_64_32",
+            "R_X86_64_32S",
+            "R_X86_64_16",
+            "R_X86_64_PC16",
+            "R_X86_64_8",
+            "R_X86_64_PC8",
+            "R_X86_64_DPTMOD64",
+            "R_X86_64_DTPOFF64",
+            "R_X86_64_TLSGD",
+            "R_X86_64_TLSLD",
+            "R_X86_64_DTPOFF32",
+            "R_X86_64_GOTTPOFF",
+            "R_X86_64_TPOFF32",
+            "R_X86_64_PC64",
+            "R_X86_64_GOTOFF64",
+            "R_X86_64_GOTOPC32",
+        ];
+        let values: Vec<u64> = (0..26).collect();
+        let relocation_map: HashMap<u64, &str> =
+            Iterator::zip(values.iter().cloned(), relocation_types).collect();
+        f.write_str(format!("| Symbol name: {}", self.symbol_name).as_str())?;
+        f.write_str(
+            format!(
+                "| Relocation type: {}",
+                relocation_map
+                    .get(&self.relocation_type)
+                    .unwrap_or(&"Other")
+            )
+            .as_str(),
+        )?;
+        f.write_str(format!("| Symbol table index: {}", self.symbol_index).as_str())?;
+        f.write_str(format!("| Offset: {:X}", self.offset).as_str())?;
+        f.write_str(format!("| Addend: {:X}", self.offset).as_str())?;
+        f.write_str(format!("|").as_str())
+    }
 }
 
 impl Display for Elf64ResolvedSymbolTableEntry {
@@ -284,7 +386,8 @@ pub struct Elf64Metadata {
     pub program_headers: Vec<Elf64ProgramHeader>,
     pub section_headers: Vec<Elf64SectionHeader>,
     pub symbol_table: Vec<Elf64ResolvedSymbolTableEntry>,
-    pub dynamic_symbol_table: Vec<Elf64ResolvedSymbolTableEntry>
+    pub dynamic_symbol_table: Vec<Elf64ResolvedSymbolTableEntry>,
+    pub relocations: Vec<Elf64ResolvedRelocationAddend>,
 }
 
 impl Elf64Metadata {
@@ -434,6 +537,42 @@ impl Elf64Metadata {
         Result::Ok(result)
     }
 
+    fn load_relocation_entries<T: Read + Seek>(
+        section_headers: &Vec<Elf64SectionHeader>,
+        dynamic_symbol_table: &Vec<Elf64ResolvedSymbolTableEntry>,
+        reader: &mut T,
+    ) -> Vec<Elf64ResolvedRelocationAddend> {
+        let mut result = Vec::new();
+        for header in section_headers.iter() {
+            if header.sh_type == ELF64_SECTION_HEADER_RELOCATION_ADDEND {
+                reader.seek(SeekFrom::Start(header.sh_offset));
+                let entries = header.sh_size / size_of::<Elf64SymbolTableEntry>() as u64;
+                for _ in 0..entries {
+                    let mut buffer: Vec<u8> = Vec::new();
+                    buffer.resize(size_of::<Elf64SymbolTableEntry>(), 0);
+                    reader
+                        .read_exact(&mut buffer)
+                        .map_err(|err| format!("Unable to read file: {:?}", err));
+                    let relocation_entry: Elf64RelocationAddend =
+                        unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const _) };
+                    let symbol_name: String = dynamic_symbol_table
+                        .get(relocation_entry.symbol_table_index() as usize)
+                        .map(|s| s.symbol_name.clone())
+                        .unwrap_or("".to_string());
+                    let resolved_entry = Elf64ResolvedRelocationAddend {
+                        symbol_name,
+                        relocation_type: relocation_entry.relocation_type(),
+                        offset: relocation_entry.offset,
+                        addend: relocation_entry.addend,
+                        symbol_index: relocation_entry.symbol_table_index()
+                    };
+                    result.push(resolved_entry);
+                }
+            }
+        }
+        result
+    }
+
     pub fn load<T: Read + Seek>(reader: &mut T) -> Result<Elf64Metadata, String> {
         let elf_header = Elf64Metadata::load_elf_header(reader)?;
         Elf64Metadata::check_header(&elf_header)?;
@@ -449,12 +588,15 @@ impl Elf64Metadata {
             reader,
             ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE,
         )?;
+        let relocations =
+            Elf64Metadata::load_relocation_entries(&section_headers, &dynamic_symbol_table, reader);
         let result = Elf64Metadata {
             elf_header,
             program_headers,
             section_headers,
             symbol_table,
-            dynamic_symbol_table
+            dynamic_symbol_table,
+            relocations,
         };
         Result::Ok(result)
     }

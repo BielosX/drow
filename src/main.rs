@@ -49,5 +49,9 @@ fn main() {
     for symbol in elf_metadata.dynamic_symbol_table {
         println!("{}", symbol);
     }
+    println!("Relocations:");
+    for relocation in elf_metadata.relocations {
+        println!("{}", relocation);
+    }
     //Elf64Loader::load(file_path, &elf_metadata);
 }
