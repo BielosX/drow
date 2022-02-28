@@ -58,6 +58,10 @@ pub struct Elf64SectionHeader {
     pub sh_entry_size: u64,
 }
 
+pub const SECTION_FLAG_WRITE: u64 = 1;
+pub const SECTION_FLAG_ALLOCATED: u64 = 2;
+pub const SECTION_FLAG_EXECUTABLE_INSTRUCTIONS: u64 = 4;
+
 #[repr(C)]
 pub struct Elf64SymbolTableEntry {
     pub st_name: u32,
@@ -279,6 +283,25 @@ impl Display for Elf64SectionHeader {
         if self.sh_type == ELF64_SECTION_HEADER_SYMBOL_TABLE {
             f.write_str(format!("|Section string table: {}", self.sh_link).as_str())?;
         }
+        let mut flags: Vec<&str> = Vec::new();
+        if self.sh_flags & SECTION_FLAG_WRITE > 0 {
+            flags.push("WRITABLE_DATA");
+        }
+        if self.sh_flags & SECTION_FLAG_ALLOCATED > 0 {
+            flags.push("ALLOCATED");
+        }
+        if self.sh_flags & SECTION_FLAG_EXECUTABLE_INSTRUCTIONS > 0 {
+            flags.push("EXECUTABLE_INSTRUCTIONS");
+        }
+        let mut flags_string = String::new();
+        for x in 0..flags.len() {
+            if x != (flags.len() - 1) {
+                flags_string.push_str(format!("{} & ", flags[x]).as_str());
+            } else {
+                flags_string.push_str(flags[x]);
+            }
+        }
+        f.write_str(format!("|Flags: {}", flags_string).as_str())?;
         f.write_str("|\n")
     }
 }
