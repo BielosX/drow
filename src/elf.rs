@@ -26,9 +26,14 @@ pub struct Elf64Header {
     pub e_section_name_string_table_index: u16,
 }
 
+pub const PROGRAM_FLAG_EXECUTE: u32 = 1;
+pub const PROGRAM_FLAG_WRITE: u32 = 2;
+pub const PROGRAM_FLAG_READ: u32 = 4;
+
 #[repr(C)]
 pub struct Elf64ProgramHeader {
     pub p_type: u32,
+    pub p_flags: u32,
     pub p_offset: u64,
     pub p_virtual_address: u64,
     pub p_physical_address: u64,
@@ -250,6 +255,18 @@ impl Display for Elf64ResolvedSymbolTableEntry {
     }
 }
 
+fn make_flags_string(flags: &Vec<&str>) -> String {
+    let mut flags_string = String::new();
+    for x in 0..flags.len() {
+        if x != (flags.len() - 1) {
+            flags_string.push_str(format!("{} & ", flags[x]).as_str());
+        } else {
+            flags_string.push_str(flags[x]);
+        }
+    }
+    flags_string
+}
+
 impl Display for Elf64SectionHeader {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let section_type: HashMap<u32, &str> = [
@@ -293,15 +310,7 @@ impl Display for Elf64SectionHeader {
         if self.sh_flags & SECTION_FLAG_EXECUTABLE_INSTRUCTIONS > 0 {
             flags.push("EXECUTABLE_INSTRUCTIONS");
         }
-        let mut flags_string = String::new();
-        for x in 0..flags.len() {
-            if x != (flags.len() - 1) {
-                flags_string.push_str(format!("{} & ", flags[x]).as_str());
-            } else {
-                flags_string.push_str(flags[x]);
-            }
-        }
-        f.write_str(format!("|Flags: {}", flags_string).as_str())?;
+        f.write_str(format!("|Flags: {}", make_flags_string(&flags)).as_str())?;
         f.write_str(format!("|Flags value: {:X}", self.sh_flags).as_str())?;
         f.write_str("|\n")
     }
@@ -333,6 +342,17 @@ impl Display for Elf64ProgramHeader {
         f.write_str(format!("|Virtual Address: {:#X}", self.p_virtual_address).as_str())?;
         f.write_str(format!("|File Size: {}", self.p_file_size).as_str())?;
         f.write_str(format!("|Memory Size: {}", self.p_memory_size).as_str())?;
+        let mut flags: Vec<&str> = Vec::new();
+        if self.p_flags & PROGRAM_FLAG_EXECUTE > 0 {
+            flags.push("EXECUTE");
+        }
+        if self.p_flags & PROGRAM_FLAG_READ > 0 {
+            flags.push("READ");
+        }
+        if self.p_flags & PROGRAM_FLAG_WRITE > 0 {
+            flags.push("WRITE");
+        }
+        f.write_str(format!("|Flags: {}", make_flags_string(&flags)).as_str())?;
         f.write_str("|\n")
     }
 }
