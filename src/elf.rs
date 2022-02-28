@@ -302,6 +302,7 @@ impl Display for Elf64SectionHeader {
             }
         }
         f.write_str(format!("|Flags: {}", flags_string).as_str())?;
+        f.write_str(format!("|Flags value: {:X}", self.sh_flags).as_str())?;
         f.write_str("|\n")
     }
 }
