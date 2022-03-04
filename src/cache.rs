@@ -1,9 +1,9 @@
 use crate::syscall;
 use libc::{perror, size_t, stat};
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::mem::size_of;
 use std::{mem, ptr};
-use std::ffi::CString;
 
 pub struct LibraryCache {
     cache: HashMap<String, String>,
@@ -71,8 +71,7 @@ impl LibraryCache {
         let cache_magic_new: Vec<u8> = CACHE_MAGIC_NEW.chars().map(|ch| ch as u8).collect();
         let cache_version: Vec<u8> = CACHE_VERSION.chars().map(|ch| ch as u8).collect();
         let c_path = CString::new(path).unwrap();
-        let file_descriptor =
-            unsafe { syscall::open(c_path.as_ptr(), libc::O_RDONLY) };
+        let file_descriptor = unsafe { syscall::open(c_path.as_ptr(), libc::O_RDONLY) };
         if file_descriptor < 0 {
             result = Result::Err("Unable to open cache file".to_string());
             unsafe {

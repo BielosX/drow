@@ -1,6 +1,6 @@
 use libc::perror;
 
-use crate::{syscall, Elf64Metadata, Elf64SectionHeader, Elf64ProgramHeader};
+use crate::{syscall, Elf64Metadata, Elf64ProgramHeader, Elf64SectionHeader};
 
 struct ProgramStack {
     address: *const libc::c_void,

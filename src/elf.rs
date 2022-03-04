@@ -623,7 +623,7 @@ impl Elf64Metadata {
                         relocation_type: relocation_entry.relocation_type(),
                         offset: relocation_entry.offset,
                         addend: relocation_entry.addend,
-                        symbol_index: relocation_entry.symbol_table_index()
+                        symbol_index: relocation_entry.symbol_table_index(),
                     };
                     result.push(resolved_entry);
                 }
