@@ -42,16 +42,16 @@ fn main() {
             println!("Required library: {}", library);
         }
     }
-    for symbol in elf_metadata.symbol_table {
+    for symbol in elf_metadata.symbol_table.iter() {
         println!("{}", symbol);
     }
     println!("Dynamic symbol table:");
-    for symbol in elf_metadata.dynamic_symbol_table {
+    for symbol in elf_metadata.dynamic_symbol_table.iter() {
         println!("{}", symbol);
     }
     println!("Relocations:");
-    for relocation in elf_metadata.relocations {
+    for relocation in elf_metadata.relocations.iter() {
         println!("{}", relocation);
     }
-    //Elf64Loader::load(file_path, &elf_metadata);
+    Elf64Loader::load(file_path, &elf_metadata);
 }

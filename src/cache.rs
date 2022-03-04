@@ -1,8 +1,9 @@
 use crate::syscall;
-use libc::{size_t, stat};
+use libc::{perror, size_t, stat};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::{mem, ptr};
+use std::ffi::CString;
 
 pub struct LibraryCache {
     cache: HashMap<String, String>,
@@ -63,15 +64,21 @@ impl LibraryCache {
         std::str::from_utf8(&buffer[..]).unwrap().to_string()
     }
 
-    pub fn load(path: &String) -> Result<LibraryCache, String> {
+    pub fn load(path: &str) -> Result<LibraryCache, String> {
+        println!("Loading cache file: {}", path);
         let mut library_cache = LibraryCache::new();
         let mut result = Result::Err("Unable to load cache".to_string());
         let cache_magic_new: Vec<u8> = CACHE_MAGIC_NEW.chars().map(|ch| ch as u8).collect();
         let cache_version: Vec<u8> = CACHE_VERSION.chars().map(|ch| ch as u8).collect();
+        let c_path = CString::new(path).unwrap();
         let file_descriptor =
-            unsafe { syscall::open(path.as_ptr() as *const libc::c_char, libc::O_RDONLY) };
+            unsafe { syscall::open(c_path.as_ptr(), libc::O_RDONLY) };
         if file_descriptor < 0 {
             result = Result::Err("Unable to open cache file".to_string());
+            unsafe {
+                let error_location = libc::__errno_location();
+                perror(error_location as *const libc::c_char);
+            }
         } else {
             let file_size = LibraryCache::get_file_size(file_descriptor);
             println!("Cache file size: {}", file_size);

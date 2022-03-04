@@ -1,6 +1,6 @@
 use libc::perror;
 
-use crate::{syscall, Elf64Metadata, Elf64SectionHeader};
+use crate::{syscall, Elf64Metadata, Elf64SectionHeader, Elf64ProgramHeader};
 
 struct ProgramStack {
     address: *const libc::c_void,
@@ -43,6 +43,20 @@ pub struct Elf64Loader {
 }
 
 impl Elf64Loader {
+    fn map_protection(header: &Elf64ProgramHeader) -> libc::c_int {
+        let mut flags: libc::c_int = 0;
+        if header.execute() {
+            flags = flags | libc::PROT_EXEC;
+        }
+        if header.write() {
+            flags = flags | libc::PROT_WRITE;
+        }
+        if header.read() {
+            flags = flags | libc::PROT_READ;
+        }
+        flags
+    }
+
     pub fn load(file_path: &String, elf_metadata: &Elf64Metadata) -> Elf64Loader {
         let file_descriptor =
             unsafe { syscall::open(file_path.as_ptr() as *const libc::c_char, libc::O_RDONLY) };
@@ -54,24 +68,24 @@ impl Elf64Loader {
         }
         let mut virtual_address: Vec<*const libc::c_void> = Vec::new();
         let program_info = elf_metadata
-            .section_headers
+            .program_headers
             .iter()
-            .filter(|h| h.sh_virtual_address != 0);
+            .filter(|h| h.p_virtual_address != 0);
         let offset = 0x20000;
         for info in program_info {
-            let virtual_ptr = (info.sh_virtual_address + offset) as *const libc::c_void;
+            let virtual_ptr = (info.p_virtual_address + offset) as *const libc::c_void;
             let ptr: *const libc::c_void = unsafe {
                 syscall::mmap(
                     virtual_ptr,
-                    info.sh_size as libc::size_t,
-                    libc::PROT_EXEC | libc::PROT_READ,
+                    info.p_memory_size as libc::size_t,
+                    Elf64Loader::map_protection(info),
                     libc::MAP_FIXED | libc::MAP_SHARED,
                     file_descriptor,
-                    info.sh_offset as libc::off_t,
+                    info.p_offset as libc::off_t,
                 )
             };
             if ptr == libc::MAP_FAILED {
-                println!("Unable to map address {:#X}", info.sh_virtual_address);
+                println!("Unable to map address {:#X}", info.p_virtual_address);
                 unsafe {
                     let error_location = libc::__errno_location();
                     perror(error_location as *const libc::c_char);

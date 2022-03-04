@@ -42,6 +42,20 @@ pub struct Elf64ProgramHeader {
     pub p_align: u64,
 }
 
+impl Elf64ProgramHeader {
+    pub fn execute(&self) -> bool {
+        self.p_flags & PROGRAM_FLAG_EXECUTE > 0
+    }
+
+    pub fn write(&self) -> bool {
+        self.p_flags & PROGRAM_FLAG_WRITE > 0
+    }
+
+    pub fn read(&self) -> bool {
+        self.p_flags & PROGRAM_FLAG_READ > 0
+    }
+}
+
 pub const ELF64_SECTION_HEADER_UNUSED: u32 = 0;
 pub const ELF64_SECTION_HEADER_SYMBOL_TABLE: u32 = 2;
 pub const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
