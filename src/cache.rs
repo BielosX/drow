@@ -33,16 +33,6 @@ impl LibraryCache {
         }
     }
 
-    fn get_file_size(descriptor: i32) -> i64 {
-        let mut buffer: Vec<u8> = Vec::new();
-        buffer.resize(mem::size_of::<libc::stat>(), 0);
-        unsafe {
-            syscall::fstat(descriptor, buffer.as_ptr() as *const libc::stat);
-        }
-        let file_info: libc::stat = unsafe { ptr::read(buffer.as_ptr() as *const _) };
-        file_info.st_size
-    }
-
     unsafe fn compare_bytes(vector: &Vec<u8>, pointer: *const u8) -> bool {
         let mut result = true;
         for x in 0..vector.len() {
@@ -79,7 +69,7 @@ impl LibraryCache {
                 perror(error_location as *const libc::c_char);
             }
         } else {
-            let file_size = LibraryCache::get_file_size(file_descriptor);
+            let file_size = syscall::get_file_size(file_descriptor);
             println!("Cache file size: {}", file_size);
             unsafe {
                 let file_ptr: *const libc::c_void = syscall::mmap(

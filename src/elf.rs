@@ -30,6 +30,8 @@ pub const PROGRAM_FLAG_EXECUTE: u32 = 1;
 pub const PROGRAM_FLAG_WRITE: u32 = 2;
 pub const PROGRAM_FLAG_READ: u32 = 4;
 
+pub const PROGRAM_HEADER_TYPE_LOADABLE: u32 = 1;
+
 #[repr(C)]
 pub struct Elf64ProgramHeader {
     pub p_type: u32,
@@ -61,6 +63,7 @@ pub const ELF64_SECTION_HEADER_SYMBOL_TABLE: u32 = 2;
 pub const ELF64_SECTION_HEADER_STRING_TABLE: u32 = 3;
 pub const ELF64_SECTION_HEADER_RELOCATION_ADDEND: u32 = 4;
 pub const ELF64_SECTION_HEADER_DYNAMIC: u32 = 6;
+pub const ELF64_SECTION_HEADER_NO_BITS: u32 = 8;
 pub const ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE: u32 = 11;
 
 #[repr(C)]

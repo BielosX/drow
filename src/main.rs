@@ -62,5 +62,5 @@ fn main() {
     for relocation in elf_metadata.relocations.iter() {
         println!("{}", relocation);
     }
-    //Elf64Loader::load(file_path, &elf_metadata);
+    Elf64Loader::load(file_path, &elf_metadata);
 }
