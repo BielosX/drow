@@ -2,3 +2,5 @@ hello
 library_client
 *.so
 *.o
+hello_asm
+hello_bss
