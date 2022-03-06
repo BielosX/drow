@@ -45,7 +45,7 @@ _start:
 
     write buffer, r8
 
-    exit 0
+    exit 13
 
 
 section .rodata

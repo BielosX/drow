@@ -155,17 +155,26 @@ impl Elf64Loader {
             syscall::clone(
                 (elf_metadata.elf_header.e_entry + offset) as *const libc::c_void,
                 stack.last_address,
-                libc::CLONE_VM,
+                libc::CLONE_VM | libc::SIGCHLD,
                 0 as *const libc::c_void,
                 0 as *const libc::pid_t,
                 0 as *const libc::c_void,
                 0 as *const libc::c_void,
             )
         };
+        println!("Process with PID {} started", pid);
         let mut status: libc::c_int = 0;
-        unsafe {
-            libc::waitpid(pid, &mut status, 0);
+        let finished_pid = unsafe {
+            libc::waitpid(pid, &mut status, 0)
+        };
+        if finished_pid == -1 {
+            println!("waitpid failed");
+            unsafe {
+                let error_location = libc::__errno_location();
+                perror(error_location as *const libc::c_char);
+            }
         }
+        println!("Process with PID {} finished", finished_pid);
         if libc::WIFEXITED(status) {
             println!("Process exited normally with status: {}", libc::WEXITSTATUS(status));
         } else {
