@@ -118,6 +118,10 @@ impl LibraryCache {
                         let key = LibraryCache::pointer_to_string(key_string_pointer as *const u8);
                         let value =
                             LibraryCache::pointer_to_string(value_string_pointer as *const u8);
+                        // TODO load as HashMap<String, Vec<String>>
+                        if let Some(x) = library_cache.find(&key) {
+                            println!("WARN: overriding cache entry {}: {} with {}", key, x,value);
+                        }
                         library_cache.cache.insert(key, value);
                     }
                     syscall::munmap(file_ptr, file_size as size_t);

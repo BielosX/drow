@@ -1,4 +1,5 @@
 use crate::string_tables::{get_string_table_content, string_length};
+use crate::Elf64Dynamic;
 use libc::wchar_t;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -9,6 +10,7 @@ use std::{iter, mem};
 const IDENT_SIZE: usize = 16;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Elf64Header {
     pub e_ident: [u8; IDENT_SIZE],
     pub e_type: u16,
@@ -33,6 +35,7 @@ pub const PROGRAM_FLAG_READ: u32 = 4;
 pub const PROGRAM_HEADER_TYPE_LOADABLE: u32 = 1;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Elf64ProgramHeader {
     pub p_type: u32,
     pub p_flags: u32,
@@ -67,6 +70,7 @@ pub const ELF64_SECTION_HEADER_NO_BITS: u32 = 8;
 pub const ELF64_SECTION_HEADER_DYNAMIC_SYMBOL_TABLE: u32 = 11;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Elf64SectionHeader {
     pub sh_name: u32,
     pub sh_type: u32,
@@ -85,6 +89,7 @@ pub const SECTION_FLAG_ALLOCATED: u64 = 2;
 pub const SECTION_FLAG_EXECUTABLE_INSTRUCTIONS: u64 = 4;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Elf64SymbolTableEntry {
     pub st_name: u32,
     pub st_info: u8,
@@ -116,6 +121,7 @@ impl Elf64SymbolTableEntry {
     }
 }
 
+#[derive(Clone)]
 pub struct Elf64ResolvedSymbolTableEntry {
     pub symbol_name: String,
     pub binding: u8,
@@ -126,6 +132,7 @@ pub struct Elf64ResolvedSymbolTableEntry {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Elf64RelocationAddend {
     pub offset: u64,
     pub info: u64,
@@ -169,6 +176,7 @@ const RELOCATION_X86_64_PC64: u64 = 24;
 const RELOCATION_X86_64_GOTOFF64: u64 = 25;
 const RELOCATION_X86_64_GOTOPC32: u64 = 26;
 
+#[derive(Clone)]
 pub struct Elf64ResolvedRelocationAddend {
     pub symbol_name: String,
     pub symbol_index: u64,
@@ -443,13 +451,16 @@ impl Display for Elf64Header {
     }
 }
 
+#[derive(Clone)]
 pub struct Elf64Metadata {
+    pub file_path: String,
     pub elf_header: Elf64Header,
     pub program_headers: Vec<Elf64ProgramHeader>,
     pub section_headers: Vec<Elf64SectionHeader>,
     pub symbol_table: Vec<Elf64ResolvedSymbolTableEntry>,
     pub dynamic_symbol_table: Vec<Elf64ResolvedSymbolTableEntry>,
     pub relocations: Vec<Elf64ResolvedRelocationAddend>,
+    pub dynamic: Elf64Dynamic,
 }
 
 impl Elf64Metadata {
@@ -635,7 +646,11 @@ impl Elf64Metadata {
         result
     }
 
-    pub fn load<T: Read + Seek>(reader: &mut T) -> Result<Elf64Metadata, String> {
+    pub fn load<T: Read + Seek>(
+        file_path: &String,
+        reader: &mut T,
+    ) -> Result<Elf64Metadata, String> {
+        println!("Loading file: {}", file_path);
         let elf_header = Elf64Metadata::load_elf_header(reader)?;
         Elf64Metadata::check_header(&elf_header)?;
         let program_headers = Elf64Metadata::load_program_headers(&elf_header, reader)?;
@@ -652,13 +667,16 @@ impl Elf64Metadata {
         )?;
         let relocations =
             Elf64Metadata::load_relocation_entries(&section_headers, &dynamic_symbol_table, reader);
+        let dynamic = Elf64Dynamic::load(&section_headers, reader)?;
         let result = Elf64Metadata {
+            file_path: file_path.clone(),
             elf_header,
             program_headers,
             section_headers,
             symbol_table,
             dynamic_symbol_table,
             relocations,
+            dynamic,
         };
         Result::Ok(result)
     }

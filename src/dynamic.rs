@@ -27,6 +27,7 @@ impl Elf64DynamicData {
 const DYNAMIC_TABLE_NEEDED: i64 = 1;
 const DYNAMIC_TABLE_STRING_TABLE: i64 = 5;
 
+#[derive(Clone)]
 pub struct Elf64Dynamic {
     pub required_libraries: Vec<String>,
 }
@@ -34,7 +35,7 @@ pub struct Elf64Dynamic {
 impl Elf64Dynamic {
     fn load_dynamic_section<T: Read + Seek>(
         entry: &Elf64SectionHeader,
-        metadata: &Elf64Metadata,
+        section_headers: &Vec<Elf64SectionHeader>,
         elf64_dynamic: &mut Elf64Dynamic,
         reader: &mut T,
     ) {
@@ -68,7 +69,7 @@ impl Elf64Dynamic {
                 println!("Dynamic string table address: {}", entry.value_or_pointer);
             }
         }
-        let string_tables = get_string_tables_content(&metadata.section_headers, reader);
+        let string_tables = get_string_tables_content(section_headers, reader);
         let string_table = string_tables
             .get(&elf_dynamic_data.dynamic_string_table_address)
             .unwrap();
@@ -85,18 +86,17 @@ impl Elf64Dynamic {
     }
 
     pub fn load<T: Read + Seek>(
-        metadata: &Elf64Metadata,
+        section_headers: &Vec<Elf64SectionHeader>,
         reader: &mut T,
     ) -> Result<Elf64Dynamic, String> {
         let mut result = Elf64Dynamic {
             required_libraries: Vec::new(),
         };
-        let dynamic_sections = metadata
-            .section_headers
+        let dynamic_sections = section_headers
             .iter()
             .filter(|sec| sec.sh_type == ELF64_SECTION_HEADER_DYNAMIC);
         for entry in dynamic_sections {
-            Elf64Dynamic::load_dynamic_section(entry, metadata, &mut result, reader);
+            Elf64Dynamic::load_dynamic_section(entry, section_headers, &mut result, reader);
         }
         Result::Ok(result)
     }

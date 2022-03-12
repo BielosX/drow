@@ -2,7 +2,7 @@ use crate::cache::LibraryCache;
 use crate::dynamic::Elf64Dynamic;
 use crate::elf::*;
 use crate::ld_path_loader::LdPathLoader;
-use crate::loader::Elf64Loader;
+use crate::loader::{DependenciesResolver, Elf64Loader};
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
@@ -33,24 +33,11 @@ fn main() {
     let file_path = &args[1];
     let elf_file = File::open(file_path).expect("Unable to open elf file");
     let mut reader = BufReader::new(elf_file);
-    let elf_metadata: Elf64Metadata = Elf64Metadata::load(&mut reader).unwrap();
-    printer::print(&elf_metadata, &mut reader);
-    let dynamic = Elf64Dynamic::load(&elf_metadata, &mut reader).unwrap();
-    let library_cache = LibraryCache::load(&CACHE_PATH.to_string()).unwrap();
+    let elf_metadata: Elf64Metadata = Elf64Metadata::load(file_path, &mut reader).unwrap();
+    let cache = LibraryCache::load(CACHE_PATH).expect("Unable to load cache");
     let mut ld_path_loader = ld_library_path.as_ref().map(|a| LdPathLoader::new(a));
-    for library in dynamic.required_libraries {
-        if let Some(absolute_path) = library_cache.find(&library) {
-            println!("Required library: {} => {}", library, absolute_path);
-        } else {
-            if let Some(path_loader) = ld_path_loader.as_mut() {
-                if let Some(absolute_path) = path_loader.get(&library) {
-                    println!("Required library: {} => {}", library, absolute_path);
-                }
-            } else {
-                println!("Required library: {}", library);
-            }
-        }
-    }
+    printer::print(&elf_metadata, &mut reader);
+    /*
     for symbol in elf_metadata.symbol_table.iter() {
         println!("{}", symbol);
     }
@@ -62,5 +49,12 @@ fn main() {
     for relocation in elf_metadata.relocations.iter() {
         println!("{}", relocation);
     }
-    Elf64Loader::load(file_path, &elf_metadata);
+    Elf64Loader::load(&elf_metadata);
+     */
+    let mut dependencies_resolver = DependenciesResolver::new(cache, ld_path_loader);
+    let queue = dependencies_resolver.resolve_in_loading_order(&elf_metadata);
+    println!("Loading order: ");
+    for entry in queue.iter() {
+        println!("{}", entry.file_path);
+    }
 }
