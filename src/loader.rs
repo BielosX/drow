@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use libc::perror;
@@ -68,16 +68,19 @@ impl DependenciesResolver {
         }
     }
 
-    fn resolve_path(&mut self, library: &String) -> Option<String> {
-        let mut result = Option::None;
-        if let Some(absolute_path) = self.library_cache.find(library) {
-            result = Option::Some(absolute_path.clone())
+    fn resolve_path(&mut self, library: &String) -> Vec<String> {
+        let mut result = Vec::new();
+        if let Some(absolute_paths) = self.library_cache.find(library) {
+            result = absolute_paths.clone();
         } else {
-            result = self
+            let path = self
                 .ld_path_loader
                 .as_mut()
                 .map(|loader| loader.get(library))
                 .flatten();
+            if let Some(p) = path {
+                result.push(p);
+            }
         }
         result
     }
@@ -88,13 +91,16 @@ impl DependenciesResolver {
     ) -> Vec<Elf64Metadata> {
         let mut result = Vec::new();
         for library in elf_metadata.dynamic.required_libraries.iter() {
-            let absolute_path = self
-                .resolve_path(library)
-                .expect(format!("Unable to resolve {}", library).as_str());
-            let elf_file = File::open(absolute_path.clone()).expect("Unable to open elf file");
-            let mut reader = BufReader::new(elf_file);
-            let metadata = Elf64Metadata::load(&absolute_path, &mut reader).expect("Unable to load elf file");
-            result.push(metadata);
+            let absolute_paths = self
+                .resolve_path(library);
+            for path in absolute_paths.iter() {
+                let elf_file = File::open(path.clone()).expect("Unable to open elf file");
+                let mut reader = BufReader::new(elf_file);
+                let metadata = Elf64Metadata::load(path, &mut reader);
+                if let Ok(loaded) = metadata {
+                    result.push(loaded);
+                }
+            }
         }
         result
     }
@@ -112,6 +118,7 @@ impl DependenciesResolver {
         let dependencies = self.resolve_direct_dependencies(elf_metadata);
         DependenciesResolver::add_front(&mut queue, &dependencies);
         while let Some(entry) = queue.pop_front() {
+            result.push_front(entry.clone());
             let entry_dependencies = self.resolve_direct_dependencies(&entry);
             DependenciesResolver::add_front(&mut queue, &entry_dependencies);
         }

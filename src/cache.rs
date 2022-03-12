@@ -6,7 +6,7 @@ use std::mem::size_of;
 use std::{mem, ptr};
 
 pub struct LibraryCache {
-    cache: HashMap<String, String>,
+    cache: HashMap<String, Vec<String>>,
 }
 
 const CACHE_MAGIC_NEW: &str = "glibc-ld.so.cache";
@@ -23,7 +23,7 @@ struct CacheEntry {
 }
 
 impl LibraryCache {
-    pub fn find(&self, key: &String) -> Option<&String> {
+    pub fn find(&self, key: &String) -> Option<&Vec<String>> {
         self.cache.get(key)
     }
 
@@ -118,11 +118,13 @@ impl LibraryCache {
                         let key = LibraryCache::pointer_to_string(key_string_pointer as *const u8);
                         let value =
                             LibraryCache::pointer_to_string(value_string_pointer as *const u8);
-                        // TODO load as HashMap<String, Vec<String>>
-                        if let Some(x) = library_cache.find(&key) {
-                            println!("WARN: overriding cache entry {}: {} with {}", key, x,value);
+                        if let Some(entry) = library_cache.cache.get_mut(&key) {
+                            entry.push(value);
+                        } else {
+                            let mut libraries = Vec::new();
+                            libraries.push(value);
+                            library_cache.cache.insert(key, libraries);
                         }
-                        library_cache.cache.insert(key, value);
                     }
                     syscall::munmap(file_ptr, file_size as size_t);
                     result = Ok(library_cache);
