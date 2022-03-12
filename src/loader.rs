@@ -111,16 +111,24 @@ impl DependenciesResolver {
         }
     }
 
-    pub fn resolve_in_loading_order(&mut self, elf_metadata: &Elf64Metadata) -> VecDeque<Elf64Metadata> {
-        let mut result: VecDeque<Elf64Metadata> = VecDeque::new();
-        result.push_back(elf_metadata.clone());
+    pub fn resolve_in_loading_order(&mut self, elf_metadata: &Elf64Metadata) -> Vec<Elf64Metadata> {
+        let mut libraries: VecDeque<Elf64Metadata> = VecDeque::new();
+        libraries.push_back(elf_metadata.clone());
         let mut queue = VecDeque::new();
         let dependencies = self.resolve_direct_dependencies(elf_metadata);
         DependenciesResolver::add_front(&mut queue, &dependencies);
         while let Some(entry) = queue.pop_front() {
-            result.push_front(entry.clone());
+            libraries.push_front(entry.clone());
             let entry_dependencies = self.resolve_direct_dependencies(&entry);
             DependenciesResolver::add_front(&mut queue, &entry_dependencies);
+        }
+        let mut result = Vec::new();
+        let mut loaded: HashSet<String> = HashSet::new();
+        for elem in libraries.iter() {
+            if !loaded.contains(&elem.file_path) {
+                loaded.insert(elem.file_path.clone());
+                result.push(elem.clone());
+            }
         }
         result
     }
