@@ -183,6 +183,7 @@ pub struct Elf64ResolvedRelocationAddend {
     pub relocation_type: u64,
     pub offset: u64,
     pub addend: i32,
+    pub symbol_section_index: u32
 }
 
 impl Display for Elf64ResolvedRelocationAddend {
@@ -337,6 +338,7 @@ impl Display for Elf64SectionHeader {
         }
         f.write_str(format!("|Flags: {}", make_flags_string(&flags)).as_str())?;
         f.write_str(format!("|Flags value: {:X}", self.sh_flags).as_str())?;
+        f.write_str(format!("|Link: {}", self.sh_link).as_str())?;
         f.write_str("|\n")
     }
 }
@@ -638,6 +640,7 @@ impl Elf64Metadata {
                         offset: relocation_entry.offset,
                         addend: relocation_entry.addend,
                         symbol_index: relocation_entry.symbol_table_index(),
+                        symbol_section_index: header.sh_link
                     };
                     result.push(resolved_entry);
                 }
