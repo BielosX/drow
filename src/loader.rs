@@ -1,4 +1,5 @@
 use std::collections::{HashSet, VecDeque};
+use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
 use libc::perror;
@@ -170,8 +171,50 @@ impl BssMemory {
     }
 }
 
+struct MappedMemory {
+    pointer: *const libc::c_void,
+    length: libc::size_t
+}
+
+impl MappedMemory {
+    pub fn memory_map(file_descriptor: i32,
+                      size: libc::size_t,
+                      base_address: *const libc::c_void,
+                      file_offset: libc::off_t,
+                      protection: libc::c_int) -> Result<MappedMemory, String> {
+        let ptr: *const libc::c_void = unsafe {
+            syscall::mmap(
+                base_address,
+                size,
+                protection,
+                libc::MAP_FIXED | libc::MAP_PRIVATE,
+                file_descriptor,
+                file_offset,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            Result::Err(format!("Unable to map address {:#X}", base_address as u64))
+        } else {
+            Result::Ok(MappedMemory {
+                pointer: ptr,
+                length: size
+            })
+        }
+    }
+}
+
+impl Drop for MappedMemory {
+    fn drop(&mut self) {
+        if !self.pointer.is_null() {
+            unsafe {
+                syscall::munmap(self.pointer, self.length);
+            }
+        }
+    }
+}
+
 pub struct Elf64Loader {
-    sections_virtual_addresses: Vec<*const libc::c_void>,
+    mapped_memory: Vec<MappedMemory>,
     stack: ProgramStack,
 }
 
@@ -191,19 +234,20 @@ impl Elf64Loader {
     }
 
     pub fn load(elf_metadata: &Elf64Metadata) -> Elf64Loader {
+        let file_path_c_string = CString::new(elf_metadata.file_path.clone()).unwrap();
         let file_descriptor = unsafe {
             syscall::open(
-                elf_metadata.file_path.as_ptr() as *const libc::c_char,
+                file_path_c_string.as_ptr(),
                 libc::O_RDONLY,
             )
         };
         if file_descriptor < 0 {
-            eprintln!("Unable to open file");
+            eprintln!("Unable to open file {}", elf_metadata.file_path);
             std::process::exit(-1);
         } else {
             println!("File descriptor: {}", file_descriptor);
         }
-        let mut virtual_address: Vec<*const libc::c_void> = Vec::new();
+        let mut mapped_memory: Vec<MappedMemory> = Vec::new();
         let program_info = elf_metadata
             .program_headers
             .iter()
@@ -219,24 +263,12 @@ impl Elf64Loader {
                 info.p_virtual_address, aligned_address
             );
             let protection = Elf64Loader::map_protection(info);
-            let ptr: *const libc::c_void = unsafe {
-                syscall::mmap(
-                    virtual_ptr,
-                    info.p_memory_size as libc::size_t,
-                    protection,
-                    libc::MAP_FIXED | libc::MAP_PRIVATE,
-                    file_descriptor,
-                    info.p_offset as libc::off_t,
-                )
-            };
-            if ptr == libc::MAP_FAILED {
-                println!("Unable to map address {:#X}", virtual_ptr as u64);
-                unsafe {
-                    let error_location = libc::__errno_location();
-                    perror(error_location as *const libc::c_char);
-                };
-            }
-            virtual_address.push(ptr);
+            let memory_mapped = MappedMemory::memory_map(file_descriptor,
+                                                         info.p_memory_size as libc::size_t,
+                                                         virtual_ptr,
+                                                         info.p_offset as libc::off_t,
+                                                         protection).unwrap();
+            mapped_memory.push(memory_mapped);
         }
         let bss_section = elf_metadata
             .section_headers
@@ -281,7 +313,7 @@ impl Elf64Loader {
         }
         Elf64Loader {
             stack,
-            sections_virtual_addresses: virtual_address,
+            mapped_memory
         }
     }
 }

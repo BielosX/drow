@@ -49,12 +49,14 @@ fn main() {
     for relocation in elf_metadata.relocations.iter() {
         println!("{}", relocation);
     }
-    Elf64Loader::load(&elf_metadata);
      */
+    Elf64Loader::load(&elf_metadata);
+    /*
     let mut dependencies_resolver = DependenciesResolver::new(cache, ld_path_loader);
     let queue = dependencies_resolver.resolve_in_loading_order(&elf_metadata);
     println!("Loading order: ");
     for entry in queue.iter() {
         println!("{}", entry.file_path);
     }
+     */
 }
