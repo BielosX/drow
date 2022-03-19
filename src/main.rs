@@ -50,7 +50,9 @@ fn main() {
         println!("{}", relocation);
     }
      */
-    Elf64Loader::load(&elf_metadata);
+    let mut elf_loader = Elf64Loader::new();
+    elf_loader.load_executable(&elf_metadata);
+    elf_loader.execute();
     /*
     let mut dependencies_resolver = DependenciesResolver::new(cache, ld_path_loader);
     let queue = dependencies_resolver.resolve_in_loading_order(&elf_metadata);

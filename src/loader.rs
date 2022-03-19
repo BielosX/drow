@@ -20,6 +20,7 @@ fn align_address(address: u64, alignment: u64) -> u64 {
 
 struct ProgramStack {
     address: *const libc::c_void,
+    size: libc::size_t,
     last_address: *const libc::c_void,
 }
 
@@ -39,6 +40,7 @@ impl ProgramStack {
                 println!("Allocated pointer: {:#X}", ptr as usize);
                 result = Option::Some(ProgramStack {
                     address: ptr,
+                    size,
                     last_address: (ptr as usize + (size - 1)) as *const libc::c_void,
                 });
             } else {
@@ -50,6 +52,16 @@ impl ProgramStack {
             }
         }
         result
+    }
+}
+
+impl Drop for ProgramStack {
+    fn drop(&mut self) {
+        if !self.address.is_null() {
+            unsafe {
+                syscall::munmap(self.address, self.size);
+            }
+        }
     }
 }
 
@@ -137,6 +149,7 @@ impl DependenciesResolver {
 
 struct BssMemory {
     address: *const libc::c_void,
+    size: libc::size_t
 }
 
 impl BssMemory {
@@ -158,7 +171,7 @@ impl BssMemory {
             );
             if ptr != libc::MAP_FAILED {
                 println!("BSS allocated at: {:#X}", ptr as usize);
-                result = Option::Some(BssMemory { address: ptr });
+                result = Option::Some(BssMemory { address: ptr, size: size as libc::size_t });
             } else {
                 println!("Mmap failed");
                 unsafe {
@@ -168,6 +181,16 @@ impl BssMemory {
             }
         }
         result
+    }
+}
+
+impl Drop for BssMemory {
+    fn drop(&mut self) {
+        if !self.address.is_null() {
+            unsafe {
+                syscall::munmap(self.address, self.size);
+            }
+        }
     }
 }
 
@@ -215,7 +238,9 @@ impl Drop for MappedMemory {
 
 pub struct Elf64Loader {
     mapped_memory: Vec<MappedMemory>,
-    stack: ProgramStack,
+    bss: Vec<BssMemory>,
+    entry: u64,
+    base_address: u64
 }
 
 impl Elf64Loader {
@@ -233,7 +258,16 @@ impl Elf64Loader {
         flags
     }
 
-    pub fn load(elf_metadata: &Elf64Metadata) -> Elf64Loader {
+    pub fn new() -> Elf64Loader {
+        Elf64Loader {
+            mapped_memory: Vec::new(),
+            bss: Vec::new(),
+            base_address: 0x20000,
+            entry: 0
+        }
+    }
+
+    pub fn load_executable(&mut self, elf_metadata: &Elf64Metadata) {
         let file_path_c_string = CString::new(elf_metadata.file_path.clone()).unwrap();
         let file_descriptor = unsafe {
             syscall::open(
@@ -247,14 +281,13 @@ impl Elf64Loader {
         } else {
             println!("File descriptor: {}", file_descriptor);
         }
-        let mut mapped_memory: Vec<MappedMemory> = Vec::new();
         let program_info = elf_metadata
             .program_headers
             .iter()
             .filter(|h| h.p_virtual_address != 0)
             .filter(|h| h.p_file_size > 0)
             .filter(|h| h.p_type == PROGRAM_HEADER_TYPE_LOADABLE);
-        let offset = 0x20000;
+        let offset = self.base_address;
         for info in program_info {
             let aligned_address = align_address(info.p_virtual_address + offset, info.p_align);
             let virtual_ptr = aligned_address as *const libc::c_void;
@@ -268,19 +301,25 @@ impl Elf64Loader {
                                                          virtual_ptr,
                                                          info.p_offset as libc::off_t,
                                                          protection).unwrap();
-            mapped_memory.push(memory_mapped);
+            self.mapped_memory.push(memory_mapped);
         }
         let bss_section = elf_metadata
             .section_headers
             .iter()
             .filter(|h| h.sh_type == ELF64_SECTION_HEADER_NO_BITS);
         for bss in bss_section {
-            BssMemory::allocate(bss, offset);
+            if let Some(bss_allocated) = BssMemory::allocate(bss, offset) {
+                self.bss.push(bss_allocated);
+            }
         }
+        self.entry = elf_metadata.elf_header.e_entry + offset;
+    }
+
+    pub fn execute(&self) {
         let stack = ProgramStack::allocate(4096).unwrap();
         let pid = unsafe {
             syscall::clone(
-                (elf_metadata.elf_header.e_entry + offset) as *const libc::c_void,
+                self.entry as *const libc::c_void,
                 stack.last_address,
                 libc::CLONE_VM | libc::SIGCHLD,
                 0 as *const libc::c_void,
@@ -310,10 +349,6 @@ impl Elf64Loader {
             if libc::WIFSIGNALED(status) {
                 println!("Process terminated by a signal");
             }
-        }
-        Elf64Loader {
-            stack,
-            mapped_memory
         }
     }
 }
