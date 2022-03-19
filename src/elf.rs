@@ -92,6 +92,14 @@ impl Elf64SectionHeader {
     pub fn allocated_in_memory(&self) -> bool {
         self.sh_flags & SECTION_FLAG_ALLOCATED > 0
     }
+
+    pub fn executable(&self) -> bool {
+        self.sh_flags & SECTION_FLAG_EXECUTABLE_INSTRUCTIONS > 0
+    }
+
+    pub fn writable(&self) -> bool {
+        self.sh_flags & SECTION_FLAG_WRITE > 0
+    }
 }
 
 #[repr(C)]
@@ -333,13 +341,13 @@ impl Display for Elf64SectionHeader {
             f.write_str(format!("|Section string table: {}", self.sh_link).as_str())?;
         }
         let mut flags: Vec<&str> = Vec::new();
-        if self.sh_flags & SECTION_FLAG_WRITE > 0 {
+        if self.writable() {
             flags.push("WRITABLE_DATA");
         }
-        if self.sh_flags & SECTION_FLAG_ALLOCATED > 0 {
+        if self.allocated_in_memory() {
             flags.push("ALLOCATED");
         }
-        if self.sh_flags & SECTION_FLAG_EXECUTABLE_INSTRUCTIONS > 0 {
+        if self.executable() {
             flags.push("EXECUTABLE_INSTRUCTIONS");
         }
         f.write_str(format!("|Flags: {}", make_flags_string(&flags)).as_str())?;
