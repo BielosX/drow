@@ -50,15 +50,8 @@ fn main() {
         println!("{}", relocation);
     }
      */
-    let mut elf_loader = Elf64Loader::new();
-    elf_loader.load_executable(&elf_metadata);
-    elf_loader.execute();
-    /*
     let mut dependencies_resolver = DependenciesResolver::new(cache, ld_path_loader);
-    let queue = dependencies_resolver.resolve_in_loading_order(&elf_metadata);
-    println!("Loading order: ");
-    for entry in queue.iter() {
-        println!("{}", entry.file_path);
-    }
-     */
+    let mut elf_loader = Elf64Loader::new(dependencies_resolver);
+    elf_loader.load(&elf_metadata);
+    //elf_loader.execute();
 }

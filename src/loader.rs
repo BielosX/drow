@@ -1,10 +1,14 @@
+use libc::perror;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufReader;
-use libc::perror;
 
-use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, Elf64ResolvedSymbolTableEntry};
+use crate::{
+    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedSymbolTableEntry,
+    Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS,
+    PROGRAM_HEADER_TYPE_LOADABLE,
+};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -101,8 +105,7 @@ impl DependenciesResolver {
     ) -> Vec<Elf64Metadata> {
         let mut result = Vec::new();
         for library in elf_metadata.dynamic.required_libraries.iter() {
-            let absolute_paths = self
-                .resolve_path(library);
+            let absolute_paths = self.resolve_path(library);
             for path in absolute_paths.iter() {
                 let elf_file = File::open(path.clone()).expect("Unable to open elf file");
                 let mut reader = BufReader::new(elf_file);
@@ -146,7 +149,7 @@ impl DependenciesResolver {
 
 struct BssMemory {
     address: *const libc::c_void,
-    size: libc::size_t
+    size: libc::size_t,
 }
 
 impl BssMemory {
@@ -168,7 +171,10 @@ impl BssMemory {
             );
             if ptr != libc::MAP_FAILED {
                 println!("BSS allocated at: {:#X}", ptr as usize);
-                result = Option::Some(BssMemory { address: ptr, size: size as libc::size_t });
+                result = Option::Some(BssMemory {
+                    address: ptr,
+                    size: size as libc::size_t,
+                });
             } else {
                 println!("Mmap failed");
                 unsafe {
@@ -193,15 +199,17 @@ impl Drop for BssMemory {
 
 struct MappedMemory {
     pointer: *const libc::c_void,
-    length: libc::size_t
+    length: libc::size_t,
 }
 
 impl MappedMemory {
-    pub fn memory_map(file_descriptor: i32,
-                      size: libc::size_t,
-                      base_address: *const libc::c_void,
-                      file_offset: libc::off_t,
-                      protection: libc::c_int) -> Result<MappedMemory, String> {
+    pub fn memory_map(
+        file_descriptor: i32,
+        size: libc::size_t,
+        base_address: *const libc::c_void,
+        file_offset: libc::off_t,
+        protection: libc::c_int,
+    ) -> Result<MappedMemory, String> {
         let ptr: *const libc::c_void = unsafe {
             syscall::mmap(
                 base_address,
@@ -213,11 +221,12 @@ impl MappedMemory {
             )
         };
         if ptr == libc::MAP_FAILED {
+            println!("fd: {}, size: {}, addr: {:#X}, offset: {:#X}, prot: {}", file_descriptor, size, base_address as u64, file_offset, protection);
             Result::Err(format!("Unable to map address {:#X}", base_address as u64))
         } else {
             Result::Ok(MappedMemory {
                 pointer: ptr,
-                length: size
+                length: size,
             })
         }
     }
@@ -233,12 +242,15 @@ impl Drop for MappedMemory {
     }
 }
 
+const DYNAMIC_LOADER_SO: &str = "ld-linux-x86-64.so.2";
+
 pub struct Elf64Loader {
     mapped_memory: Vec<MappedMemory>,
     bss: Vec<BssMemory>,
     entry: u64,
     base_address: u64,
-    global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>
+    global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
+    dependency_resolver: DependenciesResolver
 }
 
 impl Elf64Loader {
@@ -256,13 +268,14 @@ impl Elf64Loader {
         flags
     }
 
-    pub fn new() -> Elf64Loader {
+    pub fn new(dependency_resolver: DependenciesResolver) -> Elf64Loader {
         Elf64Loader {
             mapped_memory: Vec::new(),
             bss: Vec::new(),
             base_address: 0x20000,
             entry: 0,
-            global_symbols: HashMap::new()
+            global_symbols: HashMap::new(),
+            dependency_resolver
         }
     }
 
@@ -276,20 +289,59 @@ impl Elf64Loader {
         }
     }
 
-    pub fn load_executable(&mut self, elf_metadata: &Elf64Metadata) {
-        let file_path_c_string = CString::new(elf_metadata.file_path.clone()).unwrap();
-        let file_descriptor = unsafe {
-            syscall::open(
-                file_path_c_string.as_ptr(),
-                libc::O_RDONLY,
-            )
-        };
-        if file_descriptor < 0 {
-            eprintln!("Unable to open file {}", elf_metadata.file_path);
-            std::process::exit(-1);
-        } else {
-            println!("File descriptor: {}", file_descriptor);
+    fn map_section_protection(header: &Elf64SectionHeader) -> libc::c_int {
+        let mut flags: libc::c_int = libc::PROT_READ;
+        if header.writable() {
+            flags = flags | libc::PROT_WRITE;
         }
+        if header.executable() {
+            flags = flags | libc::PROT_EXEC;
+        }
+        flags
+    }
+
+    pub fn load_sections(&mut self, elf_metadata: &Elf64Metadata) {
+        println!("Loading shared object {}", elf_metadata.file_path);
+        let file_descriptor = syscall::open_file(&elf_metadata.file_path).unwrap();
+        let section_to_allocate = elf_metadata
+            .section_headers
+            .iter()
+            .filter(|h| h.allocated_in_memory())
+            .filter(|h| h.sh_size > 0);
+        let offset = self.base_address;
+        let mut last_address: u64 = 0;
+        for header in section_to_allocate {
+            let aligned_address =
+                align_address(header.sh_virtual_address + offset, header.sh_address_align);
+            let diff = header.sh_virtual_address + offset - aligned_address;
+            if aligned_address + header.sh_size > last_address {
+                last_address = aligned_address + header.sh_size;
+            }
+            println!(
+                "Virtual Address {:X} will be loaded at {:X}",
+                header.sh_virtual_address, aligned_address
+            );
+            let protection = Elf64Loader::map_section_protection(&header);
+            let virtual_ptr = aligned_address as *const libc::c_void;
+            let memory_mapped = MappedMemory::memory_map(
+                file_descriptor,
+                header.sh_size as libc::size_t,
+                virtual_ptr,
+                (header.sh_offset - diff) as libc::off_t,
+                protection,
+            )
+            .unwrap();
+            self.mapped_memory.push(memory_mapped);
+        }
+        self.base_address = Elf64Loader::round_page_size(last_address + 1);
+        unsafe {
+            syscall::close(file_descriptor);
+        }
+    }
+
+    pub fn load_program_header(&mut self, elf_metadata: &Elf64Metadata) {
+        println!("Loading executable {}", elf_metadata.file_path);
+        let file_descriptor = syscall::open_file(&elf_metadata.file_path).unwrap();
         let program_info = elf_metadata
             .program_headers
             .iter()
@@ -300,6 +352,7 @@ impl Elf64Loader {
         let mut last_address: u64 = 0;
         for info in program_info {
             let aligned_address = align_address(info.p_virtual_address + offset, info.p_align);
+            let diff = info.p_virtual_address + offset - aligned_address;
             if aligned_address + info.p_memory_size > last_address {
                 last_address = aligned_address + info.p_memory_size;
             }
@@ -309,11 +362,14 @@ impl Elf64Loader {
                 info.p_virtual_address, aligned_address
             );
             let protection = Elf64Loader::map_protection(info);
-            let memory_mapped = MappedMemory::memory_map(file_descriptor,
-                                                         info.p_memory_size as libc::size_t,
-                                                         virtual_ptr,
-                                                         info.p_offset as libc::off_t,
-                                                         protection).unwrap();
+            let memory_mapped = MappedMemory::memory_map(
+                file_descriptor,
+                info.p_memory_size as libc::size_t,
+                virtual_ptr,
+                (info.p_offset - diff) as libc::off_t,
+                protection,
+            )
+            .unwrap();
             self.mapped_memory.push(memory_mapped);
         }
         let bss_section = elf_metadata
@@ -327,6 +383,22 @@ impl Elf64Loader {
         }
         self.entry = elf_metadata.elf_header.e_entry + offset;
         self.base_address = Elf64Loader::round_page_size(last_address + 1);
+        unsafe {
+            syscall::close(file_descriptor);
+        }
+    }
+
+    pub fn load(&mut self, elf_metadata: &Elf64Metadata) {
+        let files = self.dependency_resolver.resolve_in_loading_order(elf_metadata);
+        for file in files.iter() {
+            if !file.file_path.contains(DYNAMIC_LOADER_SO) {
+                if file.program_headers.is_empty() {
+                    self.load_sections(file);
+                } else {
+                    self.load_program_header(file);
+                }
+            }
+        }
     }
 
     pub fn execute(&self) {

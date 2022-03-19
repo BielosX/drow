@@ -197,7 +197,7 @@ pub struct Elf64ResolvedRelocationAddend {
     pub relocation_type: u64,
     pub offset: u64,
     pub addend: i32,
-    pub symbol_section_index: u32
+    pub symbol_section_index: u32,
 }
 
 impl Display for Elf64ResolvedRelocationAddend {
@@ -654,7 +654,7 @@ impl Elf64Metadata {
                         offset: relocation_entry.offset,
                         addend: relocation_entry.addend,
                         symbol_index: relocation_entry.symbol_table_index(),
-                        symbol_section_index: header.sh_link
+                        symbol_section_index: header.sh_link,
                     };
                     result.push(resolved_entry);
                 }

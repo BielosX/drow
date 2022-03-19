@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::{mem, ptr};
 
 extern "C" {
@@ -39,4 +40,14 @@ pub fn get_file_size(descriptor: i32) -> i64 {
     }
     let file_info: libc::stat = unsafe { ptr::read(buffer.as_ptr() as *const _) };
     file_info.st_size
+}
+
+pub fn open_file(file_path: &String) -> Result<i32, String> {
+    let file_path_c_string = CString::new(file_path.clone()).unwrap();
+    let file_descriptor = unsafe { open(file_path_c_string.as_ptr(), libc::O_RDONLY) };
+    if file_descriptor < 0 {
+        Result::Err(format!("Unable to open file {}", file_path))
+    } else {
+        Result::Ok(file_descriptor)
+    }
 }
