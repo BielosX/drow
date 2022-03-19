@@ -267,6 +267,16 @@ impl Elf64Loader {
         }
     }
 
+    fn round_page_size(address: u64) -> u64 {
+        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+        if address % page_size == 0 {
+            address
+        } else {
+            let x = address / page_size;
+            page_size * (x + 1)
+        }
+    }
+
     pub fn load_executable(&mut self, elf_metadata: &Elf64Metadata) {
         let file_path_c_string = CString::new(elf_metadata.file_path.clone()).unwrap();
         let file_descriptor = unsafe {
@@ -288,8 +298,12 @@ impl Elf64Loader {
             .filter(|h| h.p_file_size > 0)
             .filter(|h| h.p_type == PROGRAM_HEADER_TYPE_LOADABLE);
         let offset = self.base_address;
+        let mut last_address: u64 = 0;
         for info in program_info {
             let aligned_address = align_address(info.p_virtual_address + offset, info.p_align);
+            if aligned_address + info.p_memory_size > last_address {
+                last_address = aligned_address + info.p_memory_size;
+            }
             let virtual_ptr = aligned_address as *const libc::c_void;
             println!(
                 "Virtual Address {:X} will be loaded at {:X}",
@@ -313,6 +327,7 @@ impl Elf64Loader {
             }
         }
         self.entry = elf_metadata.elf_header.e_entry + offset;
+        self.base_address = Elf64Loader::round_page_size(last_address + 1);
     }
 
     pub fn execute(&self) {
