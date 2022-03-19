@@ -1,13 +1,10 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
 use libc::perror;
 
-use crate::{
-    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64SectionHeader, LdPathLoader,
-    LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE,
-};
+use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, Elf64ResolvedSymbolTableEntry};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -240,7 +237,8 @@ pub struct Elf64Loader {
     mapped_memory: Vec<MappedMemory>,
     bss: Vec<BssMemory>,
     entry: u64,
-    base_address: u64
+    base_address: u64,
+    global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>
 }
 
 impl Elf64Loader {
@@ -263,7 +261,8 @@ impl Elf64Loader {
             mapped_memory: Vec::new(),
             bss: Vec::new(),
             base_address: 0x20000,
-            entry: 0
+            entry: 0,
+            global_symbols: HashMap::new()
         }
     }
 
