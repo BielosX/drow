@@ -88,6 +88,12 @@ pub const SECTION_FLAG_WRITE: u64 = 1;
 pub const SECTION_FLAG_ALLOCATED: u64 = 2;
 pub const SECTION_FLAG_EXECUTABLE_INSTRUCTIONS: u64 = 4;
 
+impl Elf64SectionHeader {
+    pub fn allocated_in_memory(&self) -> bool {
+        self.sh_flags & SECTION_FLAG_ALLOCATED > 0
+    }
+}
+
 #[repr(C)]
 #[derive(Clone)]
 pub struct Elf64SymbolTableEntry {
