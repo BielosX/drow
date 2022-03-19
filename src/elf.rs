@@ -113,17 +113,19 @@ pub struct Elf64SymbolTableEntry {
     pub st_size: u64,
 }
 
-const SYMBOL_TYPE_BINDING_LOCAL: u8 = 0;
-const SYMBOL_TYPE_BINDING_GLOBAL: u8 = 1;
-const SYMBOL_TYPE_BINDING_WEAK: u8 = 2;
-const SYMBOL_TYPE_BINDING_LOOS: u8 = 10;
-const SYMBOL_TYPE_BINDING_HIOS: u8 = 12;
-const SYMBOL_TYPE_BINDING_LOPROC: u8 = 13;
-const SYMBOL_TYPE_BINDING_HIPROC: u8 = 15;
+const SYMBOL_BINDING_LOCAL: u8 = 0;
+const SYMBOL_BINDING_GLOBAL: u8 = 1;
+const SYMBOL_BINDING_WEAK: u8 = 2;
+const SYMBOL_BINDING_LOOS: u8 = 10;
+const SYMBOL_BINDING_HIOS: u8 = 12;
+const SYMBOL_BINDING_LOPROC: u8 = 13;
+const SYMBOL_BINDING_HIPROC: u8 = 15;
 
 const SHN_UNDEF: u16 = 0;
 const SHN_ABSOLUTE: u16 = 0xfff1;
 const SHN_COMMON: u16 = 0xfff2;
+
+const SYMBOL_TYPE_FUNCTION: u8 = 2;
 
 impl Elf64SymbolTableEntry {
     pub fn binding(&self) -> u8 {
@@ -145,6 +147,16 @@ pub struct Elf64ResolvedSymbolTableEntry {
     pub size: u64,
 }
 
+impl Elf64ResolvedSymbolTableEntry {
+    pub fn global(&self) -> bool {
+        self.binding == SYMBOL_BINDING_GLOBAL
+    }
+
+    pub fn function(&self) -> bool {
+        self.symbol_type == SYMBOL_TYPE_FUNCTION
+    }
+}
+
 #[repr(C)]
 #[derive(Clone)]
 pub struct Elf64RelocationAddend {
@@ -163,32 +175,33 @@ impl Elf64RelocationAddend {
     }
 }
 
-const RELOCATION_X86_64_NONE: u64 = 0;
-const RELOCATION_X86_64_64: u64 = 1;
-const RELOCATION_X86_64_PC32: u64 = 2;
-const RELOCATION_X86_64_GOT32: u64 = 3;
-const RELOCATION_X86_64_PLT32: u64 = 4;
-const RELOCATION_X86_64_COPY: u64 = 5;
-const RELOCATION_X86_64_GLOB_DAT: u64 = 6;
-const RELOCATION_X86_64_JUMP_SLOT: u64 = 7;
-const RELOCATION_X86_64_RELATIVE: u64 = 8;
-const RELOCATION_X86_64_GOTPCREL: u64 = 9;
-const RELOCATION_X86_64_32: u64 = 10;
-const RELOCATION_X86_64_32S: u64 = 11;
-const RELOCATION_X86_64_16: u64 = 12;
-const RELOCATION_X86_64_PC16: u64 = 13;
-const RELOCATION_X86_64_8: u64 = 14;
-const RELOCATION_X86_64_PC8: u64 = 15;
-const RELOCATION_X86_64_DPTMOD64: u64 = 16;
-const RELOCATION_X86_64_DTPOFF64: u64 = 17;
-const RELOCATION_X86_64_TLSGD: u64 = 19;
-const RELOCATION_X86_64_TLSLD: u64 = 20;
-const RELOCATION_X86_64_DTPOFF32: u64 = 21;
-const RELOCATION_X86_64_GOTTPOFF: u64 = 22;
-const RELOCATION_X86_64_TPOFF32: u64 = 23;
-const RELOCATION_X86_64_PC64: u64 = 24;
-const RELOCATION_X86_64_GOTOFF64: u64 = 25;
-const RELOCATION_X86_64_GOTOPC32: u64 = 26;
+pub const RELOCATION_X86_64_NONE: u64 = 0;
+pub const RELOCATION_X86_64_64: u64 = 1;
+pub const RELOCATION_X86_64_PC32: u64 = 2;
+pub const RELOCATION_X86_64_GOT32: u64 = 3;
+pub const RELOCATION_X86_64_PLT32: u64 = 4;
+pub const RELOCATION_X86_64_COPY: u64 = 5;
+pub const RELOCATION_X86_64_GLOB_DAT: u64 = 6;
+pub const RELOCATION_X86_64_JUMP_SLOT: u64 = 7;
+pub const RELOCATION_X86_64_RELATIVE: u64 = 8;
+pub const RELOCATION_X86_64_GOTPCREL: u64 = 9;
+pub const RELOCATION_X86_64_32: u64 = 10;
+pub const RELOCATION_X86_64_32S: u64 = 11;
+pub const RELOCATION_X86_64_16: u64 = 12;
+pub const RELOCATION_X86_64_PC16: u64 = 13;
+pub const RELOCATION_X86_64_8: u64 = 14;
+pub const RELOCATION_X86_64_PC8: u64 = 15;
+pub const RELOCATION_X86_64_DPTMOD64: u64 = 16;
+pub const RELOCATION_X86_64_DTPOFF64: u64 = 17;
+pub const RELOCATION_X86_64_TLSGD: u64 = 19;
+pub const RELOCATION_X86_64_TLSLD: u64 = 20;
+pub const RELOCATION_X86_64_DTPOFF32: u64 = 21;
+pub const RELOCATION_X86_64_GOTTPOFF: u64 = 22;
+pub const RELOCATION_X86_64_TPOFF32: u64 = 23;
+pub const RELOCATION_X86_64_PC64: u64 = 24;
+pub const RELOCATION_X86_64_GOTOFF64: u64 = 25;
+pub const RELOCATION_X86_64_GOTOPC32: u64 = 26;
+pub const RELOCATION_X86_64_IRELATIV: u64 = 37;
 
 #[derive(Clone)]
 pub struct Elf64ResolvedRelocationAddend {

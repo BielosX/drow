@@ -7,7 +7,8 @@ use std::io::BufReader;
 use crate::{
     syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedSymbolTableEntry,
     Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS,
-    PROGRAM_HEADER_TYPE_LOADABLE,
+    PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT,
+    RELOCATION_X86_64_RELATIVE,
 };
 
 fn align_address(address: u64, alignment: u64) -> u64 {
@@ -221,7 +222,10 @@ impl MappedMemory {
             )
         };
         if ptr == libc::MAP_FAILED {
-            println!("fd: {}, size: {}, addr: {:#X}, offset: {:#X}, prot: {}", file_descriptor, size, base_address as u64, file_offset, protection);
+            println!(
+                "fd: {}, size: {}, addr: {:#X}, offset: {:#X}, prot: {}",
+                file_descriptor, size, base_address as u64, file_offset, protection
+            );
             Result::Err(format!("Unable to map address {:#X}", base_address as u64))
         } else {
             Result::Ok(MappedMemory {
@@ -250,7 +254,7 @@ pub struct Elf64Loader {
     entry: u64,
     base_address: u64,
     global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
-    dependency_resolver: DependenciesResolver
+    dependency_resolver: DependenciesResolver,
 }
 
 impl Elf64Loader {
@@ -275,7 +279,7 @@ impl Elf64Loader {
             base_address: 0x20000,
             entry: 0,
             global_symbols: HashMap::new(),
-            dependency_resolver
+            dependency_resolver,
         }
     }
 
@@ -310,6 +314,7 @@ impl Elf64Loader {
             .filter(|h| h.sh_size > 0);
         let offset = self.base_address;
         let mut last_address: u64 = 0;
+        self.update_global_symbols(elf_metadata, offset);
         for header in section_to_allocate {
             let aligned_address =
                 align_address(header.sh_virtual_address + offset, header.sh_address_align);
@@ -333,9 +338,53 @@ impl Elf64Loader {
             .unwrap();
             self.mapped_memory.push(memory_mapped);
         }
+        self.relocate(elf_metadata, offset);
         self.base_address = Elf64Loader::round_page_size(last_address + 1);
         unsafe {
             syscall::close(file_descriptor);
+        }
+    }
+
+    fn update_global_symbols(&mut self, elf_metadata: &Elf64Metadata, offset: u64) {
+        for symbol in elf_metadata.symbol_table.iter() {
+            if symbol.global() {
+                if symbol.function() {
+                    let mut entry = symbol.clone();
+                    entry.value = entry.value + offset;
+                    self.global_symbols.insert(entry.symbol_name.clone(), entry);
+                }
+            }
+        }
+    }
+
+    fn relocate(&self, elf_metadata: &Elf64Metadata, offset: u64) {
+        for rela in elf_metadata.relocations.iter() {
+            if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT {
+                if let Some(symbol) = self.global_symbols.get(&rela.symbol_name) {
+                    unsafe {
+                        let destination_pointer = (rela.offset + offset) as *mut u64;
+                        println!(
+                            "Symbol found: {}. Address value at {:#X} will be changed to {:#X}",
+                            rela.symbol_name.clone(),
+                            destination_pointer as u64,
+                            symbol.value
+                        );
+                        *destination_pointer = symbol.value;
+                    }
+                }
+            }
+            if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
+                unsafe {
+                    let destination_pointer = (rela.offset + offset) as *mut u64;
+                    *destination_pointer = offset + rela.symbol_index;
+                }
+            }
+            if rela.relocation_type == RELOCATION_X86_64_IRELATIV {
+                unsafe {
+                    let destination_pointer = (rela.offset + offset) as *mut u64;
+                    *destination_pointer = offset + rela.symbol_index;
+                }
+            }
         }
     }
 
@@ -350,6 +399,7 @@ impl Elf64Loader {
             .filter(|h| h.p_type == PROGRAM_HEADER_TYPE_LOADABLE);
         let offset = self.base_address;
         let mut last_address: u64 = 0;
+        self.update_global_symbols(elf_metadata, offset);
         for info in program_info {
             let aligned_address = align_address(info.p_virtual_address + offset, info.p_align);
             let diff = info.p_virtual_address + offset - aligned_address;
@@ -381,6 +431,7 @@ impl Elf64Loader {
                 self.bss.push(bss_allocated);
             }
         }
+        self.relocate(elf_metadata, offset);
         self.entry = elf_metadata.elf_header.e_entry + offset;
         self.base_address = Elf64Loader::round_page_size(last_address + 1);
         unsafe {
@@ -389,7 +440,9 @@ impl Elf64Loader {
     }
 
     pub fn load(&mut self, elf_metadata: &Elf64Metadata) {
-        let files = self.dependency_resolver.resolve_in_loading_order(elf_metadata);
+        let files = self
+            .dependency_resolver
+            .resolve_in_loading_order(elf_metadata);
         for file in files.iter() {
             if !file.file_path.contains(DYNAMIC_LOADER_SO) {
                 if file.program_headers.is_empty() {
