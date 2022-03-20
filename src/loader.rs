@@ -283,65 +283,13 @@ impl Elf64Loader {
         }
     }
 
-    fn round_page_size(address: u64) -> u64 {
+    fn round_page_size(value: u64) -> u64 {
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-        if address % page_size == 0 {
-            address
+        if value % page_size == 0 {
+            value
         } else {
-            let x = address / page_size;
+            let x = value / page_size;
             page_size * (x + 1)
-        }
-    }
-
-    fn map_section_protection(header: &Elf64SectionHeader) -> libc::c_int {
-        let mut flags: libc::c_int = libc::PROT_READ;
-        if header.writable() {
-            flags = flags | libc::PROT_WRITE;
-        }
-        if header.executable() {
-            flags = flags | libc::PROT_EXEC;
-        }
-        flags
-    }
-
-    pub fn load_sections(&mut self, elf_metadata: &Elf64Metadata) {
-        println!("Loading shared object {}", elf_metadata.file_path);
-        let file_descriptor = syscall::open_file(&elf_metadata.file_path).unwrap();
-        let section_to_allocate = elf_metadata
-            .section_headers
-            .iter()
-            .filter(|h| h.allocated_in_memory())
-            .filter(|h| h.sh_size > 0);
-        let offset = self.base_address;
-        let mut last_address: u64 = 0;
-        self.update_global_symbols(elf_metadata, offset);
-        for header in section_to_allocate {
-            let aligned_address =
-                align_address(header.sh_virtual_address + offset, header.sh_address_align);
-            let diff = header.sh_virtual_address + offset - aligned_address;
-            if aligned_address + header.sh_size > last_address {
-                last_address = aligned_address + header.sh_size;
-            }
-            println!(
-                "Virtual Address {:X} will be loaded at {:X}",
-                header.sh_virtual_address, aligned_address
-            );
-            let protection = Elf64Loader::map_section_protection(&header);
-            let virtual_ptr = aligned_address as *const libc::c_void;
-            let memory_mapped = MappedMemory::memory_map(
-                file_descriptor,
-                header.sh_size as libc::size_t,
-                virtual_ptr,
-                (header.sh_offset - diff) as libc::off_t,
-                protection,
-            )
-            .unwrap();
-            self.mapped_memory.push(memory_mapped);
-        }
-        self.relocate(elf_metadata, offset);
-        self.base_address = Elf64Loader::round_page_size(last_address + 1);
-        unsafe {
-            syscall::close(file_descriptor);
         }
     }
 
@@ -350,8 +298,10 @@ impl Elf64Loader {
             if symbol.global() {
                 if symbol.function() {
                     let mut entry = symbol.clone();
-                    entry.value = entry.value + offset;
-                    self.global_symbols.insert(entry.symbol_name.clone(), entry);
+                    if !self.global_symbols.contains_key(&entry.symbol_name) {
+                        entry.value = entry.value + offset;
+                        self.global_symbols.insert(entry.symbol_name.clone(), entry);
+                    }
                 }
             }
         }
@@ -373,6 +323,7 @@ impl Elf64Loader {
                     }
                 }
             }
+            /*
             if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut u64;
@@ -385,6 +336,7 @@ impl Elf64Loader {
                     *destination_pointer = offset + rela.symbol_index;
                 }
             }
+             */
         }
     }
 
@@ -407,29 +359,21 @@ impl Elf64Loader {
                 last_address = aligned_address + info.p_memory_size;
             }
             let virtual_ptr = aligned_address as *const libc::c_void;
+            let memory_size = Elf64Loader::round_page_size(info.p_memory_size + diff) as libc::size_t;
             println!(
-                "Virtual Address {:X} will be loaded at {:X}",
-                info.p_virtual_address, aligned_address
+                "Virtual Address {:X} will be loaded at {:X}, size: {}",
+                info.p_virtual_address, aligned_address, memory_size
             );
             let protection = Elf64Loader::map_protection(info);
             let memory_mapped = MappedMemory::memory_map(
                 file_descriptor,
-                info.p_memory_size as libc::size_t,
+                memory_size,
                 virtual_ptr,
                 (info.p_offset - diff) as libc::off_t,
                 protection,
             )
             .unwrap();
             self.mapped_memory.push(memory_mapped);
-        }
-        let bss_section = elf_metadata
-            .section_headers
-            .iter()
-            .filter(|h| h.sh_type == ELF64_SECTION_HEADER_NO_BITS);
-        for bss in bss_section {
-            if let Some(bss_allocated) = BssMemory::allocate(bss, offset) {
-                self.bss.push(bss_allocated);
-            }
         }
         self.relocate(elf_metadata, offset);
         self.entry = elf_metadata.elf_header.e_entry + offset;
@@ -445,9 +389,7 @@ impl Elf64Loader {
             .resolve_in_loading_order(elf_metadata);
         for file in files.iter() {
             if !file.file_path.contains(DYNAMIC_LOADER_SO) {
-                if file.program_headers.is_empty() {
-                    self.load_sections(file);
-                } else {
+                if !file.program_headers.is_empty() {
                     self.load_program_header(file);
                 }
             }
