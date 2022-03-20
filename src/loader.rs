@@ -101,6 +101,7 @@ impl DependenciesResolver {
     ) -> Vec<Elf64Metadata> {
         let mut result = Vec::new();
         for library in elf_metadata.dynamic.required_libraries.iter() {
+            println!("Required library: {}", library);
             let absolute_paths = self.resolve_path(library);
             for path in absolute_paths.iter() {
                 let elf_file = File::open(path.clone()).expect("Unable to open elf file");

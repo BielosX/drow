@@ -29,7 +29,13 @@ impl LdPathLoader {
                     let absolute_path = fs::canonicalize(dir_file.path()).unwrap();
                     if let Some(abs_path) = absolute_path.to_str() {
                         self.libraries.insert(key.clone(), abs_path.to_string());
-                        result = Option::Some(abs_path.to_string());
+                        if let Some(file_name) = absolute_path.file_name() {
+                            if let Some(file_name_string) = file_name.to_str() {
+                                if key == &file_name_string.to_string() {
+                                    result = Option::Some(abs_path.to_string());
+                                }
+                            }
+                        }
                     }
                 }
             }
