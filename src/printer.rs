@@ -25,7 +25,7 @@ pub fn print<T: Read + Seek>(elf_metadata: &Elf64Metadata, reader: &mut T) {
         .section_headers
         .get(elf_metadata.elf_header.e_section_name_string_table_index as usize)
         .unwrap();
-    let section_names_table = string_tables_content.get(&section_names.sh_offset).unwrap();
+    let section_names_table = string_tables_content.get(&section_names.sh_virtual_address).unwrap();
     for header in elf_metadata.section_headers.iter() {
         let idx = header.sh_name as usize;
         let length = string_length(&section_names_table[idx..]);

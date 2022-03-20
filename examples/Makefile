@@ -1,4 +1,4 @@
-all: hello library hello_asm hello_bss
+all: hello library hello_asm hello_bss nasm_ext_c
 
 
 hello:
@@ -17,6 +17,10 @@ hello_bss:
 	nasm -o hello_bss.o -f elf64 hello_bss.asm
 	ld -o hello_bss hello_bss.o
 
+nasm_ext_c:
+	nasm -o nasm_ext_c.o -f elf64 nasm_ext_c.asm
+	ld -o nasm_ext_c nasm_ext_c.o -L${PWD} -lexample --dynamic-linker /usr/lib64/ld-linux-x86-64.so.2
+
 clean:
 	rm -f *.o
 	rm -f *.so
@@ -24,3 +28,4 @@ clean:
 	rm -f library_client
 	rm -f hello_asm
 	rm -f hello_bss
+	rm -f nasm_ext_c

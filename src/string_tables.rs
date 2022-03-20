@@ -12,7 +12,7 @@ pub fn get_string_tables_content<T: Read + Seek>(
         .filter(|t| t.sh_type == ELF64_SECTION_HEADER_STRING_TABLE);
     for entry in string_table_headers {
         let content = get_string_table_content(entry, reader);
-        result.insert(entry.sh_offset, content);
+        result.insert(entry.sh_virtual_address, content);
     }
     result
 }
