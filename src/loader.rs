@@ -4,12 +4,7 @@ use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufReader;
 
-use crate::{
-    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedSymbolTableEntry,
-    Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS,
-    PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT,
-    RELOCATION_X86_64_RELATIVE,
-};
+use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, Elf64ResolvedRelocationAddend, RELOCATION_X86_64_GLOB_DAT};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -254,6 +249,7 @@ pub struct Elf64Loader {
     entry: u64,
     base_address: u64,
     global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
+    default_global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
     dependency_resolver: DependenciesResolver,
 }
 
@@ -279,6 +275,7 @@ impl Elf64Loader {
             base_address: 0x20000,
             entry: 0,
             global_symbols: HashMap::new(),
+            default_global_symbols: HashMap::new(),
             dependency_resolver,
         }
     }
@@ -294,36 +291,52 @@ impl Elf64Loader {
     }
 
     fn update_global_symbols(&mut self, elf_metadata: &Elf64Metadata, offset: u64) {
-        for symbol in elf_metadata.symbol_table.iter() {
-            if symbol.global() {
-                if symbol.function() {
-                    let mut entry = symbol.clone();
-                    if !self.global_symbols.contains_key(&entry.symbol_name) {
-                        entry.value = entry.value + offset;
-                        self.global_symbols.insert(entry.symbol_name.clone(), entry);
+        for symbol in elf_metadata.dynamic_symbol_table.iter() {
+            if symbol.global() || symbol.weak() {
+                let mut entry = symbol.clone();
+                entry.value = entry.value + offset;
+                if !self.global_symbols.contains_key(&entry.symbol_name) {
+                    self.global_symbols.insert(entry.symbol_name.clone(), entry.clone());
+                }
+                if symbol.symbol_name.contains("@@") {
+                    let v: Vec<&str> = symbol.symbol_name.split("@@").collect();
+                    let name = v[0].to_string();
+                    if !self.default_global_symbols.contains_key(&name) {
+                        self.default_global_symbols.insert(name, entry.clone());
                     }
                 }
             }
         }
     }
 
+    fn relocation_symbol_value(rela: &Elf64ResolvedRelocationAddend, offset: u64, value: u64) {
+        unsafe {
+            let destination_pointer = (rela.offset + offset) as *mut u64;
+            println!(
+                "Symbol found: {}. Address value at {:#X} will be changed to {:#X}",
+                rela.symbol_name.clone(),
+                destination_pointer as u64,
+                value
+            );
+            *destination_pointer = value;
+        }
+    }
+
     fn relocate(&self, elf_metadata: &Elf64Metadata, offset: u64) {
         for rela in elf_metadata.relocations.iter() {
-            if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT {
+            if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT || rela.relocation_type == RELOCATION_X86_64_GLOB_DAT {
                 if let Some(symbol) = self.global_symbols.get(&rela.symbol_name) {
-                    unsafe {
-                        let destination_pointer = (rela.offset + offset) as *mut u64;
-                        println!(
-                            "Symbol found: {}. Address value at {:#X} will be changed to {:#X}",
-                            rela.symbol_name.clone(),
-                            destination_pointer as u64,
-                            symbol.value
-                        );
-                        *destination_pointer = symbol.value;
+                    Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
+                } else {
+                    let v: Vec<&str> = rela.symbol_name.split("@").collect();
+                    let name = v[0].to_string();
+                    if let Some(symbol) = self.default_global_symbols.get(&name) {
+                        Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
+                    } else {
+                        println!("WARN: symbol {} not found", rela.symbol_name);
                     }
                 }
             }
-            /*
             if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut u64;
@@ -336,7 +349,6 @@ impl Elf64Loader {
                     *destination_pointer = offset + rela.symbol_index;
                 }
             }
-             */
         }
     }
 

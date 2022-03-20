@@ -152,6 +152,10 @@ impl Elf64ResolvedSymbolTableEntry {
         self.binding == SYMBOL_BINDING_GLOBAL
     }
 
+    pub fn weak(&self) -> bool {
+        self.binding == SYMBOL_BINDING_WEAK
+    }
+
     pub fn function(&self) -> bool {
         self.symbol_type == SYMBOL_TYPE_FUNCTION
     }
