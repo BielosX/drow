@@ -4,7 +4,12 @@ use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufReader;
 
-use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, Elf64ResolvedRelocationAddend, RELOCATION_X86_64_GLOB_DAT};
+use crate::{
+    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
+    Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache,
+    ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_GLOB_DAT,
+    RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE,
+};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -297,7 +302,8 @@ impl Elf64Loader {
                 let mut entry = symbol.clone();
                 entry.value = entry.value + offset;
                 if !self.global_symbols.contains_key(&entry.symbol_name) {
-                    self.global_symbols.insert(entry.symbol_name.clone(), entry.clone());
+                    self.global_symbols
+                        .insert(entry.symbol_name.clone(), entry.clone());
                 }
                 if symbol.symbol_name.contains("@@") {
                     let v: Vec<&str> = symbol.symbol_name.split("@@").collect();
@@ -325,7 +331,9 @@ impl Elf64Loader {
 
     fn relocate(&self, elf_metadata: &Elf64Metadata, offset: u64) {
         for rela in elf_metadata.relocations.iter() {
-            if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT || rela.relocation_type == RELOCATION_X86_64_GLOB_DAT {
+            if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT
+                || rela.relocation_type == RELOCATION_X86_64_GLOB_DAT
+            {
                 if let Some(symbol) = self.global_symbols.get(&rela.symbol_name) {
                     Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
                 } else {
@@ -372,7 +380,8 @@ impl Elf64Loader {
                 last_address = aligned_address + info.p_memory_size;
             }
             let virtual_ptr = aligned_address as *const libc::c_void;
-            let memory_size = Elf64Loader::round_page_size(info.p_memory_size + diff) as libc::size_t;
+            let memory_size =
+                Elf64Loader::round_page_size(info.p_memory_size + diff) as libc::size_t;
             println!(
                 "Virtual Address {:X} will be loaded at {:X}, size: {}",
                 info.p_virtual_address, aligned_address, memory_size

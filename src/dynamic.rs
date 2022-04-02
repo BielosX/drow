@@ -66,7 +66,10 @@ impl Elf64Dynamic {
             }
             if entry.tag == DYNAMIC_TABLE_STRING_TABLE {
                 elf_dynamic_data.dynamic_string_table_address = entry.value_or_pointer;
-                println!("Dynamic string table address: {:#X}", entry.value_or_pointer);
+                println!(
+                    "Dynamic string table address: {:#X}",
+                    entry.value_or_pointer
+                );
             }
         }
         let string_tables = get_string_tables_content(section_headers, reader);
