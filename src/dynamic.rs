@@ -13,6 +13,9 @@ struct Elf64DynamicSection {
 struct Elf64DynamicData {
     required_libraries_string_table_offset: Vec<u64>,
     dynamic_string_table_address: u64,
+    init_function: u64,
+    init_array: u64,
+    init_array_size: u64,
 }
 
 impl Elf64DynamicData {
@@ -20,16 +23,25 @@ impl Elf64DynamicData {
         Elf64DynamicData {
             required_libraries_string_table_offset: Vec::new(),
             dynamic_string_table_address: 0,
+            init_function: 0,
+            init_array: 0,
+            init_array_size: 0,
         }
     }
 }
 
 const DYNAMIC_TABLE_NEEDED: i64 = 1;
 const DYNAMIC_TABLE_STRING_TABLE: i64 = 5;
+const DYNAMIC_TABLE_INIT_FUNCTION: i64 = 12;
+const DYNAMIC_TABLE_INIT_ARRAY: i64 = 25;
+const DYNAMIC_TABLE_INIT_ARRAY_SIZE: i64 = 27;
 
 #[derive(Clone)]
 pub struct Elf64Dynamic {
     pub required_libraries: Vec<String>,
+    pub init_function: u64,
+    pub init_array: u64,
+    pub init_array_size: u64,
 }
 
 impl Elf64Dynamic {
@@ -68,8 +80,23 @@ impl Elf64Dynamic {
                 elf_dynamic_data.dynamic_string_table_address = entry.value_or_pointer;
                 println!(
                     "Dynamic string table address: {:#X}",
-                    entry.value_or_pointer
+                    elf_dynamic_data.dynamic_string_table_address
                 );
+            }
+            if entry.tag == DYNAMIC_TABLE_INIT_FUNCTION {
+                elf_dynamic_data.init_function = entry.value_or_pointer;
+                println!("Init function address: {:#X}", elf_dynamic_data.init_function);
+            }
+            if entry.tag == DYNAMIC_TABLE_INIT_ARRAY {
+                elf_dynamic_data.init_array = entry.value_or_pointer;
+                println!(
+                    "Init functions array address: {:#X}",
+                    elf_dynamic_data.init_array
+                );
+            }
+            if entry.tag == DYNAMIC_TABLE_INIT_ARRAY_SIZE {
+                elf_dynamic_data.init_array_size = entry.value_or_pointer;
+                println!("Init functions array size: {}", elf_dynamic_data.init_array_size);
             }
         }
         let string_tables = get_string_tables_content(section_headers, reader);
@@ -86,6 +113,9 @@ impl Elf64Dynamic {
                     .to_string(),
             );
         }
+        elf64_dynamic.init_function = elf_dynamic_data.init_function;
+        elf64_dynamic.init_array = elf_dynamic_data.init_array;
+        elf64_dynamic.init_array_size = elf_dynamic_data.init_array_size;
     }
 
     pub fn load<T: Read + Seek>(
@@ -94,6 +124,9 @@ impl Elf64Dynamic {
     ) -> Result<Elf64Dynamic, String> {
         let mut result = Elf64Dynamic {
             required_libraries: Vec::new(),
+            init_array: 0,
+            init_function: 0,
+            init_array_size: 0,
         };
         let dynamic_sections = section_headers
             .iter()

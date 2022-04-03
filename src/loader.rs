@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufReader;
+use std::mem::size_of;
+use std::{mem, ptr};
 
 use crate::{
     syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
@@ -249,6 +251,21 @@ impl Drop for MappedMemory {
 
 const DYNAMIC_LOADER_SO: &str = "ld-linux-x86-64.so.2";
 
+#[repr(C)]
+struct HandlerArguments {
+    entry: u64,
+    init_functions: Vec<u64>,
+}
+
+unsafe fn handle(args: *const HandlerArguments) {
+    for init in (*args).init_functions.iter() {
+        let pointer = init.clone() as *const ();
+        mem::transmute::<*const (), fn()>(pointer)();
+    }
+    let entry_pointer = (*args).entry as *const ();
+    mem::transmute::<*const (), fn()>(entry_pointer)();
+}
+
 pub struct Elf64Loader {
     mapped_memory: Vec<MappedMemory>,
     bss: Vec<BssMemory>,
@@ -257,6 +274,7 @@ pub struct Elf64Loader {
     global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
     default_global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
     dependency_resolver: DependenciesResolver,
+    init_functions: Vec<u64>,
 }
 
 impl Elf64Loader {
@@ -283,6 +301,7 @@ impl Elf64Loader {
             global_symbols: HashMap::new(),
             default_global_symbols: HashMap::new(),
             dependency_resolver,
+            init_functions: Vec::new(),
         }
     }
 
@@ -346,6 +365,7 @@ impl Elf64Loader {
                     }
                 }
             }
+            /*
             if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut u64;
@@ -358,6 +378,7 @@ impl Elf64Loader {
                     *destination_pointer = offset + rela.symbol_index;
                 }
             }
+             */
         }
     }
 
@@ -382,16 +403,17 @@ impl Elf64Loader {
             let virtual_ptr = aligned_address as *const libc::c_void;
             let memory_size =
                 Elf64Loader::round_page_size(info.p_memory_size + diff) as libc::size_t;
+            let file_offset = info.p_offset - diff;
             println!(
-                "Virtual Address {:X} will be loaded at {:X}, size: {}",
-                info.p_virtual_address, aligned_address, memory_size
+                "Virtual Address {:#X} will be loaded at {:#X}, size: {}, file offset: {:#X}",
+                info.p_virtual_address, aligned_address, memory_size, file_offset
             );
             let protection = Elf64Loader::map_protection(info);
             let memory_mapped = MappedMemory::memory_map(
                 file_descriptor,
                 memory_size,
                 virtual_ptr,
-                (info.p_offset - diff) as libc::off_t,
+                file_offset as libc::off_t,
                 protection,
             )
             .unwrap();
@@ -405,6 +427,30 @@ impl Elf64Loader {
         }
     }
 
+    fn append_init_functions(init_array: &mut Vec<u64>, dynamic: &Elf64Dynamic, base: u64) {
+        println!(
+            "Init function: {:#X}, init_array: {:#X}, init_array_size: {}",
+            dynamic.init_function, dynamic.init_array, dynamic.init_array_size
+        );
+        if dynamic.init_function > 0 {
+            let value = dynamic.init_function + base;
+            init_array.push(value);
+            println!("Init function at: {:#X}, base: {:#X}", value, base);
+        }
+        if dynamic.init_array > 0 && dynamic.init_array_size > 0 {
+            unsafe {
+                let value = dynamic.init_array + base;
+                println!("Init array at: {:#X}, base: {:#X}", value, base);
+                let pointer = value as *const u64;
+                for x in 0..(dynamic.init_array_size / (size_of::<u64>() as u64)) {
+                    let array_elem = *(pointer.offset(x as isize)) + base;
+                    init_array.push(array_elem);
+                    println!("Init array element points to: {:#X}, base: {:#X}", array_elem, base);
+                }
+            }
+        }
+    }
+
     pub fn load(&mut self, elf_metadata: &Elf64Metadata) {
         let files = self
             .dependency_resolver
@@ -412,7 +458,13 @@ impl Elf64Loader {
         for file in files.iter() {
             if !file.file_path.contains(DYNAMIC_LOADER_SO) {
                 if !file.program_headers.is_empty() {
+                    let base = self.base_address;
                     self.load_program_header(file);
+                    Elf64Loader::append_init_functions(
+                        &mut self.init_functions,
+                        &file.dynamic,
+                        base,
+                    );
                 }
             }
         }
@@ -420,12 +472,16 @@ impl Elf64Loader {
 
     pub fn execute(&self) {
         let stack = ProgramStack::allocate(4096).unwrap();
+        let args = HandlerArguments {
+            entry: self.entry,
+            init_functions: self.init_functions.clone(),
+        };
         let pid = unsafe {
             syscall::clone(
-                self.entry as *const libc::c_void,
+                handle as *const libc::c_void,
                 stack.last_address,
                 libc::CLONE_VM | libc::SIGCHLD,
-                0 as *const libc::c_void,
+                ptr::addr_of!(args) as *const libc::c_void,
                 0 as *const libc::pid_t,
                 0 as *const libc::c_void,
                 0 as *const libc::c_void,
