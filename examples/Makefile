@@ -1,4 +1,4 @@
-all: hello library hello_asm hello_bss nasm_ext_c nasm_ext
+all: hello library hello_asm hello_bss nasm_ext_c nasm_ext libc_puts
 
 build_path = ${PWD}/build
 
@@ -30,6 +30,10 @@ nasm_ext: create_build
 	nasm -o ${build_path}/libnasm.o -f elf64 libnasm.asm
 	ld -shared -o ${build_path}/libnasm.so ${build_path}/libnasm.o
 	ld -o ${build_path}/nasm_ext ${build_path}/nasm_ext.o -L${build_path} -lnasm --dynamic-linker /usr/lib64/ld-linux-x86-64.so.2
+
+libc_puts: create_build
+	nasm -o ${build_path}/libc_puts.o -f elf64 libc_puts.asm
+	ld -o ${build_path}/libc_puts ${build_path}/libc_puts.o -lc --dynamic-linker /usr/lib64/ld-linux-x86-64.so.2
 
 clean:
 	rm -f -r ${PWD}/build
