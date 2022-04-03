@@ -159,6 +159,10 @@ impl Elf64ResolvedSymbolTableEntry {
     pub fn function(&self) -> bool {
         self.symbol_type == SYMBOL_TYPE_FUNCTION
     }
+
+    pub fn undefined(&self) -> bool {
+        self.section_index == SHN_UNDEF
+    }
 }
 
 #[repr(C)]

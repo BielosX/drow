@@ -85,7 +85,10 @@ impl Elf64Dynamic {
             }
             if entry.tag == DYNAMIC_TABLE_INIT_FUNCTION {
                 elf_dynamic_data.init_function = entry.value_or_pointer;
-                println!("Init function address: {:#X}", elf_dynamic_data.init_function);
+                println!(
+                    "Init function address: {:#X}",
+                    elf_dynamic_data.init_function
+                );
             }
             if entry.tag == DYNAMIC_TABLE_INIT_ARRAY {
                 elf_dynamic_data.init_array = entry.value_or_pointer;
@@ -96,7 +99,10 @@ impl Elf64Dynamic {
             }
             if entry.tag == DYNAMIC_TABLE_INIT_ARRAY_SIZE {
                 elf_dynamic_data.init_array_size = entry.value_or_pointer;
-                println!("Init functions array size: {}", elf_dynamic_data.init_array_size);
+                println!(
+                    "Init functions array size: {}",
+                    elf_dynamic_data.init_array_size
+                );
             }
         }
         let string_tables = get_string_tables_content(section_headers, reader);

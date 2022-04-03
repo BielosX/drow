@@ -6,12 +6,7 @@ use std::io::BufReader;
 use std::mem::size_of;
 use std::{mem, ptr};
 
-use crate::{
-    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
-    Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache,
-    ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_GLOB_DAT,
-    RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE,
-};
+use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, RELOCATION_X86_64_COPY};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -258,10 +253,12 @@ struct HandlerArguments {
 }
 
 unsafe fn handle(args: *const HandlerArguments) {
+    /*
     for init in (*args).init_functions.iter() {
         let pointer = init.clone() as *const ();
         mem::transmute::<*const (), fn()>(pointer)();
     }
+     */
     let entry_pointer = (*args).entry as *const ();
     mem::transmute::<*const (), fn()>(entry_pointer)();
 }
@@ -348,37 +345,62 @@ impl Elf64Loader {
         }
     }
 
+    fn get_symbol(
+        &self,
+        rela: &Elf64ResolvedRelocationAddend,
+    ) -> Option<Elf64ResolvedSymbolTableEntry> {
+        if let Some(symbol) = self.global_symbols.get(&rela.symbol_name) {
+            Option::Some(symbol.clone())
+        } else {
+            let v: Vec<&str> = rela.symbol_name.split("@").collect();
+            let name = v[0].to_string();
+            if let Some(symbol) = self.default_global_symbols.get(&name) {
+                Option::Some(symbol.clone())
+            } else {
+                println!("WARN: symbol {} not found", rela.symbol_name);
+                Option::None
+            }
+        }
+    }
+
     fn relocate(&self, elf_metadata: &Elf64Metadata, offset: u64) {
         for rela in elf_metadata.relocations.iter() {
             if rela.relocation_type == RELOCATION_X86_64_JUMP_SLOT
                 || rela.relocation_type == RELOCATION_X86_64_GLOB_DAT
             {
-                if let Some(symbol) = self.global_symbols.get(&rela.symbol_name) {
+                if let Some(symbol) = self.get_symbol(rela) {
+                    if symbol.undefined() {
+                        println!("SYMBOL {} UNDEFINED!!", symbol.symbol_name);
+                    }
                     Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
-                } else {
-                    let v: Vec<&str> = rela.symbol_name.split("@").collect();
-                    let name = v[0].to_string();
-                    if let Some(symbol) = self.default_global_symbols.get(&name) {
-                        Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
-                    } else {
-                        println!("WARN: symbol {} not found", rela.symbol_name);
+                }
+            }
+            if rela.relocation_type == RELOCATION_X86_64_64 {
+                if let Some(symbol) = self.get_symbol(rela) {
+                    if symbol.undefined() {
+                        println!("SYMBOL {} UNDEFINED!!", symbol.symbol_name);
+                    }
+                    unsafe {
+                        let destination_pointer = (rela.offset + offset) as *mut i64;
+                        let value = (symbol.value as i64) + (rela.addend as i64);
+                        println!(
+                            "Symbol found: {}. Address value at {:#X} will be changed to {:#X} (SYMBOL + ADDEND)",
+                            rela.symbol_name.clone(),
+                            destination_pointer as u64,
+                            value
+                        );
+                        *destination_pointer = value;
                     }
                 }
             }
-            /*
-            if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
+            if rela.relocation_type == RELOCATION_X86_64_RELATIVE
+                || rela.relocation_type == RELOCATION_X86_64_IRELATIV
+            {
                 unsafe {
-                    let destination_pointer = (rela.offset + offset) as *mut u64;
-                    *destination_pointer = offset + rela.symbol_index;
+                    let destination_pointer = (rela.offset + offset) as *mut i64;
+                    *destination_pointer = (offset as i64) + (rela.addend as i64);
                 }
             }
-            if rela.relocation_type == RELOCATION_X86_64_IRELATIV {
-                unsafe {
-                    let destination_pointer = (rela.offset + offset) as *mut u64;
-                    *destination_pointer = offset + rela.symbol_index;
-                }
-            }
-             */
         }
     }
 
@@ -405,8 +427,8 @@ impl Elf64Loader {
                 Elf64Loader::round_page_size(info.p_memory_size + diff) as libc::size_t;
             let file_offset = info.p_offset - diff;
             println!(
-                "Virtual Address {:#X} will be loaded at {:#X}, size: {}, file offset: {:#X}",
-                info.p_virtual_address, aligned_address, memory_size, file_offset
+                "Virtual Address {:#X} will be loaded at {:#X}, size: {}, file offset: {:#X}, last addr: {:#X}",
+                info.p_virtual_address, aligned_address, memory_size, file_offset, aligned_address + (memory_size as u64)
             );
             let protection = Elf64Loader::map_protection(info);
             let memory_mapped = MappedMemory::memory_map(
@@ -445,7 +467,10 @@ impl Elf64Loader {
                 for x in 0..(dynamic.init_array_size / (size_of::<u64>() as u64)) {
                     let array_elem = *(pointer.offset(x as isize)) + base;
                     init_array.push(array_elem);
-                    println!("Init array element points to: {:#X}, base: {:#X}", array_elem, base);
+                    println!(
+                        "Init array element points to: {:#X}, base: {:#X}",
+                        array_elem, base
+                    );
                 }
             }
         }
