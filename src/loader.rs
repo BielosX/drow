@@ -1,4 +1,4 @@
-use libc::perror;
+use libc::{perror, wchar_t};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString};
 use std::fs::File;
@@ -6,7 +6,7 @@ use std::io::BufReader;
 use std::mem::size_of;
 use std::{mem, ptr};
 
-use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, RELOCATION_X86_64_COPY};
+use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, RELOCATION_X86_64_COPY, SYMBOL_BINDING_GLOBAL, SYMBOL_TYPE_OBJECT};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -21,6 +21,10 @@ struct ProgramStack {
     address: *const libc::c_void,
     size: libc::size_t,
     last_address: *const libc::c_void,
+}
+
+extern {
+    static _rtld_global_ro: u8;
 }
 
 impl ProgramStack {
@@ -289,14 +293,35 @@ impl Elf64Loader {
         flags
     }
 
+    fn init_linker_symbols() -> HashMap<String, Elf64ResolvedSymbolTableEntry> {
+        let mut result = HashMap::new();
+        let value = unsafe {
+            let pointer: *const u8 = ptr::addr_of!(_rtld_global_ro) as *const u8;
+            println!("Value at 0xb8: {:#X}", *(pointer.offset(0xb8)));
+            pointer as u64
+        };
+        println!("_rtld_global_ro located at: {:#X}", value);
+        let entry = Elf64ResolvedSymbolTableEntry {
+            symbol_name: String::from("_rtld_global_ro"),
+            binding: SYMBOL_BINDING_GLOBAL,
+            symbol_type: SYMBOL_TYPE_OBJECT,
+            section_index: 0,
+            value,
+            size: size_of::<u8>() as u64
+        };
+        result.insert(String::from("_rtld_global_ro"), entry);
+        result
+    }
+
     pub fn new(dependency_resolver: DependenciesResolver) -> Elf64Loader {
+        let linker_symbols = Elf64Loader::init_linker_symbols();
         Elf64Loader {
             mapped_memory: Vec::new(),
             bss: Vec::new(),
             base_address: 0x20000,
             entry: 0,
-            global_symbols: HashMap::new(),
-            default_global_symbols: HashMap::new(),
+            global_symbols: linker_symbols.clone(),
+            default_global_symbols: linker_symbols,
             dependency_resolver,
             init_functions: Vec::new(),
         }
@@ -315,19 +340,23 @@ impl Elf64Loader {
     fn update_global_symbols(&mut self, elf_metadata: &Elf64Metadata, offset: u64) {
         for symbol in elf_metadata.dynamic_symbol_table.iter() {
             if symbol.global() || symbol.weak() {
-                let mut entry = symbol.clone();
-                entry.value = entry.value + offset;
-                if !self.global_symbols.contains_key(&entry.symbol_name) {
-                    self.global_symbols
-                        .insert(entry.symbol_name.clone(), entry.clone());
-                }
-                if symbol.symbol_name.contains("@@") {
-                    let v: Vec<&str> = symbol.symbol_name.split("@@").collect();
-                    let name = v[0].to_string();
-                    if !self.default_global_symbols.contains_key(&name) {
-                        self.default_global_symbols.insert(name, entry.clone());
+                if !symbol.undefined() {
+                    let mut entry = symbol.clone();
+                    entry.value = entry.value + offset;
+                    if !self.global_symbols.contains_key(&entry.symbol_name) {
+                        self.global_symbols
+                            .insert(entry.symbol_name.clone(), entry.clone());
+                    }
+                    if symbol.symbol_name.contains("@@") {
+                        let v: Vec<&str> = symbol.symbol_name.split("@@").collect();
+                        let name = v[0].to_string();
+                        if !self.default_global_symbols.contains_key(&name) {
+                            self.default_global_symbols.insert(name, entry.clone());
+                        }
                     }
                 }
+            } else {
+                println!("Symbol {} in {} is UNDEFINED", symbol.symbol_name, elf_metadata.file_path);
             }
         }
     }
@@ -353,7 +382,7 @@ impl Elf64Loader {
             Option::Some(symbol.clone())
         } else {
             let v: Vec<&str> = rela.symbol_name.split("@").collect();
-            let name = v[0].to_string();
+            let name = String::from(v[0].to_string().trim_matches('\0'));
             if let Some(symbol) = self.default_global_symbols.get(&name) {
                 Option::Some(symbol.clone())
             } else {

@@ -113,19 +113,20 @@ pub struct Elf64SymbolTableEntry {
     pub st_size: u64,
 }
 
-const SYMBOL_BINDING_LOCAL: u8 = 0;
-const SYMBOL_BINDING_GLOBAL: u8 = 1;
-const SYMBOL_BINDING_WEAK: u8 = 2;
-const SYMBOL_BINDING_LOOS: u8 = 10;
-const SYMBOL_BINDING_HIOS: u8 = 12;
-const SYMBOL_BINDING_LOPROC: u8 = 13;
-const SYMBOL_BINDING_HIPROC: u8 = 15;
+pub const SYMBOL_BINDING_LOCAL: u8 = 0;
+pub const SYMBOL_BINDING_GLOBAL: u8 = 1;
+pub const SYMBOL_BINDING_WEAK: u8 = 2;
+pub const SYMBOL_BINDING_LOOS: u8 = 10;
+pub const SYMBOL_BINDING_HIOS: u8 = 12;
+pub const SYMBOL_BINDING_LOPROC: u8 = 13;
+pub const SYMBOL_BINDING_HIPROC: u8 = 15;
 
 const SHN_UNDEF: u16 = 0;
 const SHN_ABSOLUTE: u16 = 0xfff1;
 const SHN_COMMON: u16 = 0xfff2;
 
-const SYMBOL_TYPE_FUNCTION: u8 = 2;
+pub const SYMBOL_TYPE_FUNCTION: u8 = 2;
+pub const SYMBOL_TYPE_OBJECT: u8 = 1;
 
 impl Elf64SymbolTableEntry {
     pub fn binding(&self) -> u8 {

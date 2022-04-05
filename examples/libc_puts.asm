@@ -11,8 +11,8 @@ _start:
     lea rdi, [rel msg]
     call strlen
 
+    mov rdi, rax
     mov rax, 60
-    mov rdi, 0
     syscall
 
     ;mov rdi, 99
