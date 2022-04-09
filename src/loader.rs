@@ -413,7 +413,17 @@ impl Elf64Loader {
                     if symbol.undefined() {
                         println!("SYMBOL {} UNDEFINED!!", symbol.symbol_name);
                     }
-                    Elf64Loader::relocation_symbol_value(rela, offset, symbol.value);
+                    let mut value = symbol.value;
+                    if symbol.indirect_function() {
+                        let pointer = symbol.value as *const ();
+                        let resolve_function = unsafe {
+                            mem::transmute::<*const (), unsafe extern "C" fn() -> u64>(pointer)
+                        };
+                        let function_pointer = unsafe { resolve_function() };
+                        value = function_pointer;
+                        println!("INDIRECT FUNCTION {} RESOLVED: {:#X}", symbol.symbol_name, value.clone());
+                    }
+                    Elf64Loader::relocation_symbol_value(rela, offset, value);
                 }
             }
             if rela.relocation_type == RELOCATION_X86_64_64 {

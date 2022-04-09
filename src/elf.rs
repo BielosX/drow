@@ -127,6 +127,7 @@ const SHN_COMMON: u16 = 0xfff2;
 
 pub const SYMBOL_TYPE_FUNCTION: u8 = 2;
 pub const SYMBOL_TYPE_OBJECT: u8 = 1;
+pub const SYMBOL_TYPE_INDIRECT_FUNCTION: u8 = 10;
 
 impl Elf64SymbolTableEntry {
     pub fn binding(&self) -> u8 {
@@ -163,6 +164,10 @@ impl Elf64ResolvedSymbolTableEntry {
 
     pub fn undefined(&self) -> bool {
         self.section_index == SHN_UNDEF
+    }
+
+    pub fn indirect_function(&self) -> bool {
+        self.symbol_type == SYMBOL_TYPE_INDIRECT_FUNCTION
     }
 }
 
