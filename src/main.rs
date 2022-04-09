@@ -53,5 +53,5 @@ fn main() {
     let mut dependencies_resolver = DependenciesResolver::new(cache, ld_path_loader);
     let mut elf_loader = Elf64Loader::new(dependencies_resolver);
     elf_loader.load(&elf_metadata);
-    elf_loader.execute();
+    elf_loader.execute_same_process();
 }

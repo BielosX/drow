@@ -4,7 +4,7 @@ use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufReader;
 use std::mem::size_of;
-use std::{mem, ptr};
+use std::{arch, mem, ptr};
 
 use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, RELOCATION_X86_64_COPY, SYMBOL_BINDING_GLOBAL, SYMBOL_TYPE_OBJECT};
 
@@ -254,6 +254,18 @@ const DYNAMIC_LOADER_SO: &str = "ld-linux-x86-64.so.2";
 struct HandlerArguments {
     entry: u64,
     init_functions: Vec<u64>,
+    last_stack_address: u64
+}
+
+unsafe fn handle_same_process(args: *const HandlerArguments) {
+    arch::asm!(
+        "mov rax, {entry}",
+        "mov rbx, {stack}",
+        "mov rsp, rbx",
+        "jmp rax",
+        entry = in(reg) (*args).entry,
+        stack = in(reg) (*args).last_stack_address
+    );
 }
 
 unsafe fn handle(args: *const HandlerArguments) {
@@ -524,11 +536,25 @@ impl Elf64Loader {
         }
     }
 
+    pub fn execute_same_process(&self) {
+        let stack = ProgramStack::allocate(4096).unwrap();
+        println!("Starting in the same process");
+        let args = HandlerArguments {
+            entry: self.entry,
+            init_functions: self.init_functions.clone(),
+            last_stack_address: stack.last_address as u64
+        };
+        unsafe {
+            handle_same_process(&args as *const HandlerArguments);
+        }
+    }
+
     pub fn execute(&self) {
         let stack = ProgramStack::allocate(4096).unwrap();
         let args = HandlerArguments {
             entry: self.entry,
             init_functions: self.init_functions.clone(),
+            last_stack_address: stack.address as u64
         };
         let pid = unsafe {
             syscall::clone(
