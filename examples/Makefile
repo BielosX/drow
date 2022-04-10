@@ -1,9 +1,12 @@
-all: hello library hello_asm hello_bss nasm_ext_c nasm_ext libc_puts
+all: hello library hello_asm hello_bss nasm_ext_c nasm_ext libc_puts args
 
 build_path = ${PWD}/build
 
 create_build:
 	mkdir -p ${build_path}
+
+args: create_build
+	gcc -o ${build_path}/args args.c
 
 hello: create_build
 	nasm -o ${build_path}/hello.o -f elf64 hello.asm

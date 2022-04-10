@@ -274,12 +274,10 @@ unsafe fn handle(args: *const HandlerArguments) {
         _init_first (0x02d1a0)
         check_stdfiles_vtables (0x02d210)
      */
-    /*
     for init in (*args).init_functions.iter() {
         let pointer = init.clone() as *const ();
-        mem::transmute::<*const (), fn()>(pointer)();
+        mem::transmute::<*const (), unsafe extern "C" fn()>(pointer)();
     }
-     */
     let entry_pointer = (*args).entry as *const ();
     mem::transmute::<*const (), fn()>(entry_pointer)();
 }
