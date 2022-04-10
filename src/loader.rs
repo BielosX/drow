@@ -270,6 +270,11 @@ unsafe fn handle_same_process(args: *const HandlerArguments) {
 
 unsafe fn handle(args: *const HandlerArguments) {
     /*
+    GLIBC has two important init functions:
+        _init_first (0x02d1a0)
+        check_stdfiles_vtables (0x02d210)
+     */
+    /*
     for init in (*args).init_functions.iter() {
         let pointer = init.clone() as *const ();
         mem::transmute::<*const (), fn()>(pointer)();
