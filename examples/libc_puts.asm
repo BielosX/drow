@@ -5,13 +5,13 @@ section .text
     extern strlen
 
 _start:
-    ;lea rdi, [rel msg]
-    ;call puts
-
     lea rdi, [rel msg]
-    call strlen
+    call puts
 
-    mov rdi, rax
+    ;lea rdi, [rel msg]
+    ;call strlen
+
+    mov rdi, 0
     mov rax, 60
     syscall
 

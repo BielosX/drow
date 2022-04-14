@@ -1,4 +1,4 @@
-use libc::{perror, wchar_t};
+use libc::{perror, printf, wchar_t};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString};
 use std::fs::File;
@@ -150,56 +150,6 @@ impl DependenciesResolver {
     }
 }
 
-struct BssMemory {
-    address: *const libc::c_void,
-    size: libc::size_t,
-}
-
-impl BssMemory {
-    fn allocate(section_header: &Elf64SectionHeader, offset: u64) -> Option<BssMemory> {
-        let mut result = Option::None;
-        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-        let bss_address =
-            align_address(section_header.sh_virtual_address + offset, page_size as u64);
-        let size =
-            (section_header.sh_virtual_address + offset - bss_address) + section_header.sh_size;
-        unsafe {
-            let ptr: *const libc::c_void = syscall::mmap(
-                bss_address as *const libc::c_void,
-                size as libc::size_t,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_PRIVATE | libc::MAP_FIXED | libc::MAP_ANONYMOUS,
-                -1,
-                0,
-            );
-            if ptr != libc::MAP_FAILED {
-                println!("BSS allocated at: {:#X}", ptr as usize);
-                result = Option::Some(BssMemory {
-                    address: ptr,
-                    size: size as libc::size_t,
-                });
-            } else {
-                println!("Mmap failed");
-                unsafe {
-                    let error_location = libc::__errno_location();
-                    perror(error_location as *const libc::c_char);
-                };
-            }
-        }
-        result
-    }
-}
-
-impl Drop for BssMemory {
-    fn drop(&mut self) {
-        if !self.address.is_null() {
-            unsafe {
-                syscall::munmap(self.address, self.size);
-            }
-        }
-    }
-}
-
 struct MappedMemory {
     pointer: *const libc::c_void,
     length: libc::size_t,
@@ -257,7 +207,17 @@ struct HandlerArguments {
     last_stack_address: u64
 }
 
+unsafe fn run_init_functions(args: *const HandlerArguments) {
+    for init in (*args).init_functions.iter() {
+        let pointer = init.clone() as *const ();
+        let function = mem::transmute::<*const (), unsafe extern "C" fn()>(pointer);
+        function();
+    }
+    println!("INITIALIZED SUCCESSFULLY");
+}
+
 unsafe fn handle_same_process(args: *const HandlerArguments) {
+    run_init_functions(args);
     arch::asm!(
         "mov rax, {entry}",
         "mov rbx, {stack}",
@@ -274,17 +234,14 @@ unsafe fn handle(args: *const HandlerArguments) {
         _init_first (0x02d1a0)
         check_stdfiles_vtables (0x02d210)
      */
-    for init in (*args).init_functions.iter() {
-        let pointer = init.clone() as *const ();
-        mem::transmute::<*const (), unsafe extern "C" fn()>(pointer)();
-    }
+    run_init_functions(args);
     let entry_pointer = (*args).entry as *const ();
-    mem::transmute::<*const (), fn()>(entry_pointer)();
+    let function = mem::transmute::<*const (), fn()>(entry_pointer);
+    function();
 }
 
 pub struct Elf64Loader {
     mapped_memory: Vec<MappedMemory>,
-    bss: Vec<BssMemory>,
     entry: u64,
     base_address: u64,
     global_symbols: HashMap<String, Elf64ResolvedSymbolTableEntry>,
@@ -332,7 +289,6 @@ impl Elf64Loader {
         let linker_symbols = Elf64Loader::init_linker_symbols();
         Elf64Loader {
             mapped_memory: Vec::new(),
-            bss: Vec::new(),
             base_address: 0x20000,
             entry: 0,
             global_symbols: linker_symbols.clone(),
@@ -519,13 +475,27 @@ impl Elf64Loader {
                 println!("Init array at: {:#X}, base: {:#X}", value, base);
                 let pointer = value as *const u64;
                 for x in 0..(dynamic.init_array_size / (size_of::<u64>() as u64)) {
-                    let array_elem = *(pointer.offset(x as isize)) + base;
-                    init_array.push(array_elem);
+                    let elem_pointer = *(pointer.offset(x as isize));
+                    init_array.push(elem_pointer);
                     println!(
-                        "Init array element points to: {:#X}, base: {:#X}",
-                        array_elem, base
+                        "Init array element points to: {:#X}, already reallocated",
+                        elem_pointer
                     );
                 }
+            }
+        }
+    }
+
+    fn zero_bss_section(elf_metadata: &Elf64Metadata, base: u64) {
+        let bss_sections = elf_metadata.section_headers
+            .iter()
+            .filter(|h| h.writable() && h.sh_type == ELF64_SECTION_HEADER_NO_BITS && h.sh_size > 0);
+        for section in bss_sections {
+            let address = section.sh_virtual_address + base;
+            println!("BSS section loaded at {:#X} with size {} will be cleared", address, section.sh_size);
+            let size = section.sh_size;
+            unsafe {
+                libc::memset(address as *mut libc::c_void, 0, size as libc::size_t);
             }
         }
     }
@@ -544,6 +514,7 @@ impl Elf64Loader {
                         &file.dynamic,
                         base,
                     );
+                    Elf64Loader::zero_bss_section(file, base);
                 }
             }
         }
