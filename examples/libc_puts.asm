@@ -3,10 +3,14 @@ section .text
     extern puts
     extern exit
     extern strlen
+    extern stdout
+    extern fputs_unlocked
 
 _start:
     lea rdi, [rel msg]
-    call puts
+    ;call puts
+    mov rsi, [rel stdout]
+    call fputs_unlocked
 
     ;lea rdi, [rel msg]
     ;call strlen

@@ -6,7 +6,14 @@ use std::io::BufReader;
 use std::mem::size_of;
 use std::{arch, mem, ptr};
 
-use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, RELOCATION_X86_64_COPY, SYMBOL_BINDING_GLOBAL, SYMBOL_TYPE_OBJECT};
+use crate::{
+    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
+    Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache,
+    ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64,
+    RELOCATION_X86_64_COPY, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV,
+    RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, SYMBOL_BINDING_GLOBAL,
+    SYMBOL_TYPE_OBJECT,
+};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -17,17 +24,23 @@ fn align_address(address: u64, alignment: u64) -> u64 {
     }
 }
 
+const DEFAULT_STACK_SIZE: libc::size_t = 1024 * 1000 * 10;
+
 struct ProgramStack {
     address: *const libc::c_void,
     size: libc::size_t,
     last_address: *const libc::c_void,
 }
 
-extern {
+extern "C" {
     static _rtld_global_ro: u8;
 }
 
 impl ProgramStack {
+    fn allocate_default_size() -> Option<ProgramStack> {
+        ProgramStack::allocate(DEFAULT_STACK_SIZE)
+    }
+
     fn allocate(size: libc::size_t) -> Option<ProgramStack> {
         let mut result = Option::None;
         unsafe {
@@ -204,7 +217,7 @@ const DYNAMIC_LOADER_SO: &str = "ld-linux-x86-64.so.2";
 struct HandlerArguments {
     entry: u64,
     init_functions: Vec<u64>,
-    last_stack_address: u64
+    last_stack_address: u64,
 }
 
 unsafe fn run_init_functions(args: *const HandlerArguments) {
@@ -279,7 +292,7 @@ impl Elf64Loader {
             symbol_type: SYMBOL_TYPE_OBJECT,
             section_index: 0,
             value,
-            size: size_of::<u8>() as u64
+            size: size_of::<u8>() as u64,
         };
         result.insert(String::from("_rtld_global_ro"), entry);
         result
@@ -327,7 +340,10 @@ impl Elf64Loader {
                     }
                 }
             } else {
-                println!("Symbol {} in {} is UNDEFINED", symbol.symbol_name, elf_metadata.file_path);
+                println!(
+                    "Symbol {} in {} is UNDEFINED",
+                    symbol.symbol_name, elf_metadata.file_path
+                );
             }
         }
     }
@@ -380,7 +396,11 @@ impl Elf64Loader {
                         };
                         let function_pointer = unsafe { resolve_function() };
                         value = function_pointer;
-                        println!("INDIRECT FUNCTION {} RESOLVED: {:#X}", symbol.symbol_name, value.clone());
+                        println!(
+                            "INDIRECT FUNCTION {} RESOLVED: {:#X}",
+                            symbol.symbol_name,
+                            value.clone()
+                        );
                     }
                     Elf64Loader::relocation_symbol_value(rela, offset, value);
                 }
@@ -409,6 +429,23 @@ impl Elf64Loader {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut i64;
                     *destination_pointer = (offset as i64) + (rela.addend as i64);
+                }
+            }
+            if rela.relocation_type == RELOCATION_X86_64_COPY {
+                if let Some(symbol) = self.get_symbol(rela) {
+                    let destination_addr = rela.offset + offset;
+                    let destination_pointer = destination_addr.clone() as *mut libc::c_void;
+                    println!(
+                        "Symbol {} of size {} will be copied to {:#X} from {:#X}",
+                        symbol.symbol_name, symbol.size, destination_addr, symbol.value
+                    );
+                    unsafe {
+                        libc::memcpy(
+                            destination_pointer,
+                            symbol.value as *const libc::c_void,
+                            symbol.size as libc::size_t,
+                        );
+                    }
                 }
             }
         }
@@ -487,12 +524,16 @@ impl Elf64Loader {
     }
 
     fn zero_bss_section(elf_metadata: &Elf64Metadata, base: u64) {
-        let bss_sections = elf_metadata.section_headers
+        let bss_sections = elf_metadata
+            .section_headers
             .iter()
             .filter(|h| h.writable() && h.sh_type == ELF64_SECTION_HEADER_NO_BITS && h.sh_size > 0);
         for section in bss_sections {
             let address = section.sh_virtual_address + base;
-            println!("BSS section loaded at {:#X} with size {} will be cleared", address, section.sh_size);
+            println!(
+                "BSS section loaded at {:#X} with size {} will be cleared",
+                address, section.sh_size
+            );
             let size = section.sh_size;
             unsafe {
                 libc::memset(address as *mut libc::c_void, 0, size as libc::size_t);
@@ -521,12 +562,12 @@ impl Elf64Loader {
     }
 
     pub fn execute_same_process(&self) {
-        let stack = ProgramStack::allocate(4096).unwrap();
+        let stack = ProgramStack::allocate_default_size().unwrap();
         println!("Starting in the same process");
         let args = HandlerArguments {
             entry: self.entry,
             init_functions: self.init_functions.clone(),
-            last_stack_address: stack.last_address as u64
+            last_stack_address: stack.last_address as u64,
         };
         unsafe {
             handle_same_process(&args as *const HandlerArguments);
@@ -534,11 +575,11 @@ impl Elf64Loader {
     }
 
     pub fn execute(&self) {
-        let stack = ProgramStack::allocate(4096).unwrap();
+        let stack = ProgramStack::allocate_default_size().unwrap();
         let args = HandlerArguments {
             entry: self.entry,
             init_functions: self.init_functions.clone(),
-            last_stack_address: stack.address as u64
+            last_stack_address: stack.address as u64,
         };
         let pid = unsafe {
             syscall::clone(
