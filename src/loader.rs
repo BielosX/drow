@@ -488,6 +488,7 @@ impl Elf64Loader {
             .unwrap();
             self.mapped_memory.push(memory_mapped);
         }
+        Elf64Loader::zero_bss_section(elf_metadata, offset);
         self.relocate(elf_metadata, offset);
         self.entry = elf_metadata.elf_header.e_entry + offset;
         self.base_address = Elf64Loader::round_page_size(last_address + 1);
@@ -555,7 +556,6 @@ impl Elf64Loader {
                         &file.dynamic,
                         base,
                     );
-                    Elf64Loader::zero_bss_section(file, base);
                 }
             }
         }
