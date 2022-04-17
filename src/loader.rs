@@ -6,14 +6,7 @@ use std::io::BufReader;
 use std::mem::size_of;
 use std::{arch, mem, ptr};
 
-use crate::{
-    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
-    Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache,
-    ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64,
-    RELOCATION_X86_64_COPY, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV,
-    RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, SYMBOL_BINDING_GLOBAL,
-    SYMBOL_TYPE_OBJECT,
-};
+use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_COPY, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, SYMBOL_BINDING_GLOBAL, SYMBOL_TYPE_OBJECT, SYMBOL_TYPE_FUNCTION};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -34,6 +27,7 @@ struct ProgramStack {
 
 extern "C" {
     static _rtld_global_ro: u8;
+    static __tunable_get_val: u8;
 }
 
 impl ProgramStack {
@@ -295,6 +289,20 @@ impl Elf64Loader {
             size: size_of::<u8>() as u64,
         };
         result.insert(String::from("_rtld_global_ro"), entry);
+        let value = unsafe {
+            let pointer: *const u8 = ptr::addr_of!(__tunable_get_val) as *const u8;
+            pointer as u64
+        };
+        println!("__tunable_get_val located at: {:#X}", value);
+        let entry = Elf64ResolvedSymbolTableEntry {
+            symbol_name: String::from("__tunable_get_val"),
+            binding: SYMBOL_BINDING_GLOBAL,
+            symbol_type: SYMBOL_TYPE_FUNCTION,
+            section_index: 0,
+            value,
+            size: size_of::<u8>() as u64,
+        };
+        result.insert(String::from("__tunable_get_val"), entry);
         result
     }
 
