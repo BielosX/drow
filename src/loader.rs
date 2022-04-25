@@ -432,11 +432,18 @@ impl Elf64Loader {
                 }
             }
             if rela.relocation_type == RELOCATION_X86_64_RELATIVE
-                || rela.relocation_type == RELOCATION_X86_64_IRELATIV
             {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut i64;
                     *destination_pointer = (offset as i64) + (rela.addend as i64);
+                }
+            }
+            if rela.relocation_type == RELOCATION_X86_64_IRELATIV {
+                unsafe {
+                    let func_pointer = (rela.addend as u64 + offset) as *const ();
+                    let destination_pointer = (rela.offset + offset) as *mut i64;
+                    let function = mem::transmute::<*const (), fn() -> i64>(func_pointer);
+                    *destination_pointer = function();
                 }
             }
             if rela.relocation_type == RELOCATION_X86_64_COPY {

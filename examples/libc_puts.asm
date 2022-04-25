@@ -19,12 +19,12 @@ _start:
     ;lea rdi, [rel msg]
     ;call strlen
 
-    ;mov rdi, 0
-    ;mov rax, 60
-    ;syscall
+    mov rdi, 0
+    mov rax, 60
+    syscall
 
-    mov rdi, 99
-    call _exit
+    ;mov rdi, 99
+    ;call _exit
 
 section .rodata
     msg: db 'Hello Puts!', 10, 0
