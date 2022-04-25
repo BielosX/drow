@@ -6,7 +6,14 @@ use std::io::BufReader;
 use std::mem::size_of;
 use std::{arch, mem, ptr};
 
-use crate::{syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend, Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache, ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64, RELOCATION_X86_64_COPY, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV, RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, SYMBOL_BINDING_GLOBAL, SYMBOL_TYPE_OBJECT, SYMBOL_TYPE_FUNCTION};
+use crate::{
+    syscall, Elf64Dynamic, Elf64Metadata, Elf64ProgramHeader, Elf64ResolvedRelocationAddend,
+    Elf64ResolvedSymbolTableEntry, Elf64SectionHeader, LdPathLoader, LibraryCache,
+    ELF64_SECTION_HEADER_NO_BITS, PROGRAM_HEADER_TYPE_LOADABLE, RELOCATION_X86_64_64,
+    RELOCATION_X86_64_COPY, RELOCATION_X86_64_GLOB_DAT, RELOCATION_X86_64_IRELATIV,
+    RELOCATION_X86_64_JUMP_SLOT, RELOCATION_X86_64_RELATIVE, SYMBOL_BINDING_GLOBAL,
+    SYMBOL_TYPE_FUNCTION, SYMBOL_TYPE_OBJECT,
+};
 
 fn align_address(address: u64, alignment: u64) -> u64 {
     let modulo = address % alignment;
@@ -431,8 +438,7 @@ impl Elf64Loader {
                     }
                 }
             }
-            if rela.relocation_type == RELOCATION_X86_64_RELATIVE
-            {
+            if rela.relocation_type == RELOCATION_X86_64_RELATIVE {
                 unsafe {
                     let destination_pointer = (rela.offset + offset) as *mut i64;
                     *destination_pointer = (offset as i64) + (rela.addend as i64);
